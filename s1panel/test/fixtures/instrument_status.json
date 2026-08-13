@@ -1,0 +1,24 @@
+{
+  "metrics": {
+    "hostConnected": true,
+    "cpuPercent": 6,
+    "cpuTempC": 41,
+    "memoryPercent": 18,
+    "memoryUsedGb": 2.7,
+    "memoryMeasured": true,
+    "storagePercent": 8,
+    "swapPercent": 0.2,
+    "backupState": "ok",
+    "backupAgeHours": 2.4,
+    "backupMessage": "BACKUP OK",
+    "healthLevel": "ok",
+    "healthMessage": "ALL SYSTEMS HEALTHY",
+    "vmCount": 1,
+    "vmTotal": 1,
+    "ctCount": 3,
+    "ctTotal": 3,
+    "uptimeDays": 3,
+    "uptimeHours": 22,
+    "uptimeMinutes": 17
+  }
+}

@@ -1,0 +1,321 @@
+#!/bin/sh
+set -eu
+
+fail() {
+    echo "Fehler: $*" >&2
+    exit 1
+}
+
+usage() {
+    cat <<'EOF'
+Aufruf: sudo ./install [OPTIONEN]
+
+  --config DATEI       vorbereitete config.json verwenden
+  --credentials DATEI  vorbereitete credentials.env verwenden
+  --ca DATEI           Proxmox-CA-Zertifikat übernehmen
+  --no-start           installieren, Dienst aber noch nicht starten
+  --skip-packages      APT/NodeSource nicht verändern (nur für Tests)
+  --help               diese Hilfe anzeigen
+EOF
+}
+
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+case "$script_dir" in
+    */ops) release_root=$(CDPATH= cd -- "$script_dir/.." && pwd) ;;
+    *) release_root=$script_dir ;;
+esac
+
+config_source=''
+credentials_source=''
+ca_source=''
+no_start=0
+skip_packages=0
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --config) [ "$#" -ge 2 ] || fail "Datei hinter --config fehlt."; config_source=$2; shift 2 ;;
+        --credentials) [ "$#" -ge 2 ] || fail "Datei hinter --credentials fehlt."; credentials_source=$2; shift 2 ;;
+        --ca) [ "$#" -ge 2 ] || fail "Datei hinter --ca fehlt."; ca_source=$2; shift 2 ;;
+        --no-start) no_start=1; shift ;;
+        --skip-packages) skip_packages=1; shift ;;
+        --help) usage; exit 0 ;;
+        *) fail "Unbekannte Option: $1" ;;
+    esac
+done
+
+[ "$(id -u)" -eq 0 ] || fail "Installation muss als root ausgeführt werden."
+
+[ -f "$release_root/RELEASE" ] || fail "RELEASE-Datei fehlt. Bitte das veröffentlichte Archiv vollständig entpacken."
+[ -d "$release_root/s1panel/node_modules" ] || fail "Production-Abhängigkeiten fehlen. Bitte das Release-Archiv statt des Quellcode-ZIPs verwenden."
+[ -f "$release_root/ops/systemd/s1panel.service" ] || fail "Installationshelfer fehlen."
+
+validate_tree_links() {
+    tree_root=$(readlink -f "$1")
+    find "$tree_root" -type l -print | while IFS= read -r link; do
+        link_target=$(readlink -f "$link") || fail "Defekter symbolischer Link im Release: $link"
+        case "$link_target" in
+            "$tree_root"/*) ;;
+            *) fail "Symbolischer Link verlässt das Release: $link" ;;
+        esac
+    done
+}
+
+validate_tree_links "$release_root"
+
+. /etc/os-release
+[ "${ID:-}" = ubuntu ] || fail "Unterstützt wird Ubuntu 22.04 oder 24.04."
+case "${VERSION_ID:-}" in 22.04|24.04) ;; *) fail "Nicht unterstützte Ubuntu-Version: ${VERSION_ID:-unbekannt}" ;; esac
+[ "$(dpkg --print-architecture)" = amd64 ] || fail "Dieses Release unterstützt derzeit nur amd64."
+
+install_packages() {
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update
+    apt-get install --yes --no-install-recommends ca-certificates curl gnupg libudev1 libusb-1.0-0
+
+    node_major=''
+    node_source='vorhandene Systeminstallation'
+    command -v node >/dev/null 2>&1 && node_major=$(node -p 'process.versions.node.split(".")[0]')
+    if [ "$node_major" != 24 ]; then
+        key_dir=$(mktemp -d /tmp/nodesource-key.XXXXXX)
+        key_file="$key_dir/nodesource-repo.gpg.key"
+        keyring_file="$key_dir/nodesource.gpg"
+        expected_fingerprint=6F71F525282841EEDAF851B42F59B5F99B1BE0B4
+        cleanup_key() { [ ! -d "$key_dir" ] || find "$key_dir" -depth -delete; }
+        trap cleanup_key EXIT HUP INT TERM
+        curl --fail --silent --show-error --location \
+            https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key --output "$key_file"
+        actual_fingerprint=$(gpg --batch --show-keys --with-colons "$key_file" |
+            awk -F: '$1 == "fpr" { print $10; exit }')
+        [ "$actual_fingerprint" = "$expected_fingerprint" ] ||
+            fail "Unerwarteter NodeSource-Schlüssel: $actual_fingerprint"
+        gpg --batch --yes --dearmor --output "$keyring_file" "$key_file"
+        install -o root -g root -m 0644 "$keyring_file" /usr/share/keyrings/nodesource.gpg
+        install -o root -g root -m 0644 "$release_root/ops/apt/nodesource-node24.sources" \
+            /etc/apt/sources.list.d/nodesource.sources
+        apt-get update
+        apt-get install --yes --no-install-recommends nodejs
+        node_source='offizielles NodeSource-Repository node_24.x'
+        cleanup_key
+        trap - EXIT HUP INT TERM
+    fi
+
+    [ "$(node -p 'process.versions.node.split(".")[0]')" = 24 ] || fail "Node.js 24 konnte nicht eingerichtet werden."
+    echo "Node.js: $(node --version), $node_source, unter $(command -v node)"
+    echo "Installiert: Ubuntu-Laufzeitpakete für USB/HID aus den eingerichteten APT-Quellen"
+}
+
+if [ "$skip_packages" -eq 0 ]; then
+    install_packages
+else
+    [ "$(node -p 'process.versions.node.split(".")[0]')" = 24 ] || fail "--skip-packages benötigt vorhandenes Node.js 24."
+    echo "APT/NodeSource unverändert (--skip-packages)."
+fi
+
+for file in "$config_source" "$credentials_source" "$ca_source"; do
+    [ -z "$file" ] || [ -f "$file" ] || fail "Datei nicht gefunden: $file"
+done
+
+install -d -o root -g root -m 0750 /etc/s1panel
+
+temporary_config=''
+temporary_credentials=''
+cleanup_configuration() {
+    for temporary in "$temporary_config" "$temporary_credentials"; do
+        [ -z "$temporary" ] || [ ! -f "$temporary" ] || find "$temporary" -maxdepth 0 -type f -delete
+    done
+}
+
+prompt_value() {
+    prompt=$1
+    default=$2
+    printf '%s [%s]: ' "$prompt" "$default" >/dev/tty
+    IFS= read -r answer </dev/tty
+    [ -n "$answer" ] || answer=$default
+    printf '%s' "$answer"
+}
+
+prompt_secret() {
+    printf '%s: ' "$1" >/dev/tty
+    terminal_state=$(stty -g </dev/tty)
+    trap 'stty "$terminal_state" </dev/tty' EXIT HUP INT TERM
+    stty -echo </dev/tty
+    IFS= read -r answer </dev/tty
+    stty "$terminal_state" </dev/tty
+    trap - EXIT HUP INT TERM
+    printf '\n' >/dev/tty
+    printf '%s' "$answer"
+}
+
+if [ ! -f /var/lib/s1panel/config.json ] && [ ! -f /etc/s1panel/config.json ] && [ -z "$config_source" ]; then
+    [ -t 0 ] || fail "Ohne Terminal sind bei der Erstinstallation --config und --credentials erforderlich."
+    echo "Neue Installation: Grundkonfiguration wird jetzt abgefragt."
+    pve_url=$(prompt_value "Proxmox-URL" "https://pve.example.internal:8006")
+    pve_node=$(prompt_value "Proxmox-Knotenname" "pve")
+    pve_storage=$(prompt_value "Anzuzeigender Storage" "local-lvm")
+    lcd_device=$(node "$release_root/s1panel/scripts/detect_devices.js" --lcd-path 2>/dev/null || true)
+    [ -n "$lcd_device" ] || lcd_device=CHANGE-ME
+    lcd_device=$(prompt_value "LCD-Gerätepfad" "$lcd_device")
+    led_device=$(node "$release_root/s1panel/scripts/detect_devices.js" --led-path 2>/dev/null || true)
+    [ -n "$led_device" ] || led_device=/dev/ttyUSB0
+    led_device=$(prompt_value "LED-Gerätepfad" "$led_device")
+    if [ -z "$ca_source" ]; then
+        entered_ca=$(prompt_value "Proxmox-CA-Datei, leer bei öffentlich gültigem Zertifikat" "-")
+        [ "$entered_ca" = - ] || ca_source=$entered_ca
+    fi
+    token=$(prompt_secret "Proxmox-API-Token (Eingabe bleibt verborgen)")
+    case "$pve_url" in https://*) ;; *) fail "Die Proxmox-URL muss HTTPS verwenden." ;; esac
+    case "$token" in PVEAPIToken=*) ;; *) fail "Ungültiges Proxmox-API-Token." ;; esac
+
+    temporary_config=$(mktemp /tmp/s1panel-config.XXXXXX)
+    temporary_credentials=$(mktemp /tmp/s1panel-credentials.XXXXXX)
+    trap cleanup_configuration EXIT HUP INT TERM
+    ca_target=''
+    [ -z "$ca_source" ] || ca_target=/etc/s1panel/pve-root-ca.pem
+    node - "$release_root/s1panel/config.instrument.example.json" "$temporary_config" \
+        "$pve_node" "$pve_storage" "$lcd_device" "$led_device" "$ca_target" <<'NODE'
+const fs = require('fs');
+const [source, target, nodeName, storage, lcd, led, ca] = process.argv.slice(2);
+const config = JSON.parse(fs.readFileSync(source, 'utf8'));
+const sensor = config.sensors.find(item => item.module === 'sensors/system_status.js');
+sensor.config.node = nodeName;
+sensor.config.storage = storage;
+sensor.config.ca_file = ca;
+sensor.config.guest_memory_probes = [];
+config.device = lcd;
+config.led_config.device = led;
+fs.writeFileSync(target, JSON.stringify(config, null, 3) + '\n', { mode: 0o600 });
+NODE
+    printf 'S1PANEL_PVE_URL=%s\nS1PANEL_PVE_TOKEN=%s\n' "$pve_url" "$token" > "$temporary_credentials"
+    chmod 0600 "$temporary_config" "$temporary_credentials"
+    config_source=$temporary_config
+    credentials_source=$temporary_credentials
+fi
+
+[ -z "$ca_source" ] || [ -f "$ca_source" ] || fail "CA-Datei nicht gefunden: $ca_source"
+
+if [ ! -f /var/lib/s1panel/config.json ] && [ ! -f /etc/s1panel/config.json ]; then
+    [ -n "$config_source" ] || fail "Bei der Erstinstallation ist --config DATEI erforderlich. Siehe docs/INSTALLATION.md."
+    node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))' "$config_source" \
+        || fail "Die angegebene config.json ist ungültig."
+    install -o root -g root -m 0640 "$config_source" /etc/s1panel/config.json
+    echo "Konfiguration vorbereitet: /etc/s1panel/config.json"
+else
+    echo "Vorhandene Laufzeitkonfiguration bleibt unverändert."
+fi
+
+if [ ! -f /etc/s1panel/credentials.env ]; then
+    [ -n "$credentials_source" ] || fail "Bei der Erstinstallation ist --credentials DATEI erforderlich."
+    grep -q '^S1PANEL_PVE_URL=https://' "$credentials_source" \
+        || fail "credentials.env benötigt eine HTTPS-Proxmox-URL."
+    grep -q '^S1PANEL_PVE_TOKEN=PVEAPIToken=' "$credentials_source" \
+        || fail "credentials.env enthält kein gültiges Proxmox-API-Token."
+    install -o root -g root -m 0600 "$credentials_source" /etc/s1panel/credentials.env
+    echo "Secrets installiert: /etc/s1panel/credentials.env (root, Modus 0600)"
+else
+    echo "Vorhandene Secrets bleiben unverändert."
+fi
+
+if [ -n "$ca_source" ]; then
+    install -o root -g root -m 0644 "$ca_source" /etc/s1panel/pve-root-ca.pem
+    echo "Proxmox-CA installiert: /etc/s1panel/pve-root-ca.pem"
+fi
+
+cleanup_configuration
+trap - EXIT HUP INT TERM
+
+version=$(sed -n 's/^version=//p' "$release_root/RELEASE")
+revision=$(sed -n 's/^revision=//p' "$release_root/RELEASE")
+[ -n "$version" ] && [ -n "$revision" ] || fail "Ungültige RELEASE-Datei."
+release_id="${version}-${revision}"
+base=/opt/acemagic-s1-display
+releases=$base/releases
+target=$releases/$release_id
+staging=$releases/.${release_id}.install.$$
+
+install -d -o root -g root -m 0755 "$releases"
+previous=''
+[ ! -L "$base/current" ] || previous=$(readlink -f "$base/current")
+
+if [ ! -d "$target" ]; then
+    install -d -o root -g root -m 0755 "$staging"
+    cleanup_staging() { [ ! -d "$staging" ] || find "$staging" -depth -delete; }
+    trap cleanup_staging EXIT HUP INT TERM
+    cp -a "$release_root/." "$staging/"
+    chown -R root:root "$staging"
+    find "$staging" -type d -exec chmod 0755 {} +
+    find "$staging" -type f ! -perm -0100 -exec chmod 0644 {} +
+    find "$staging" -type f -perm -0100 -exec chmod 0755 {} +
+    mv "$staging" "$target"
+    trap - EXIT HUP INT TERM
+    echo "Release installiert: $target"
+else
+    echo "Release bereits vorhanden: $target"
+fi
+
+(cd "$target/s1panel" && node -e '
+for (const name of ["canvas", "express", "node-hid", "serialport", "winston"]) {
+    require(name);
+}
+') || fail "Die nativen Laufzeitmodule sind auf diesem System nicht kompatibel."
+echo "Laufzeitmodule geprüft: canvas, express, node-hid, serialport und winston"
+
+ln -s "$target" "$base/current.next"
+mv -Tf "$base/current.next" "$base/current"
+
+if [ "$(systemd-detect-virt --container 2>/dev/null || true)" != lxc ]; then
+    "$target/ops/setup-hardware-access"
+else
+    echo "LXC erkannt: USB-Durchreichung wird auf dem Proxmox-Host eingerichtet, nicht im Container."
+fi
+
+if ! "$target/ops/setup-service"; then
+    [ -z "$previous" ] || { ln -s "$previous" "$base/current.rollback"; mv -Tf "$base/current.rollback" "$base/current"; }
+    fail "Diensteinrichtung fehlgeschlagen; vorheriger Release-Zeiger wurde wiederhergestellt."
+fi
+
+if [ -n "$ca_source" ]; then
+    updated_config=$(mktemp /run/s1panel-config-ca.XXXXXX)
+    node - /var/lib/s1panel/config.json "$updated_config" <<'NODE'
+const fs = require('fs');
+const [source, target] = process.argv.slice(2);
+const config = JSON.parse(fs.readFileSync(source, 'utf8'));
+const sensor = config.sensors.find(item => item.module === 'sensors/system_status.js');
+if (!sensor) throw new Error('Proxmox-Sensor fehlt in config.json');
+sensor.config.ca_file = '/etc/s1panel/pve-root-ca.pem';
+fs.writeFileSync(target, JSON.stringify(config, null, 3) + '\n', { mode: 0o600 });
+NODE
+    install -o s1panel -g s1panel -m 0640 "$updated_config" /var/lib/s1panel/config.json
+    find "$updated_config" -maxdepth 0 -type f -delete
+fi
+
+if [ "$no_start" -eq 1 ]; then
+    echo "Installation vorbereitet; Dienst wurde auf Wunsch nicht gestartet."
+    echo "Nach USB- und Konfigurationsprüfung starten: systemctl start s1panel"
+    exit 0
+fi
+
+if grep -q '"device"[[:space:]]*:[[:space:]]*"CHANGE-ME"' /var/lib/s1panel/config.json; then
+    echo "Installation vorbereitet; LCD-Gerätepfad ist noch CHANGE-ME."
+    echo "Geräte erkennen: node $target/s1panel/scripts/detect_devices.js"
+    echo "Danach /var/lib/s1panel/config.json anpassen und systemctl start s1panel ausführen."
+    exit 0
+fi
+
+if ! systemctl restart s1panel; then
+    [ -z "$previous" ] || { ln -s "$previous" "$base/current.rollback"; mv -Tf "$base/current.rollback" "$base/current"; systemctl restart s1panel; }
+    fail "Dienststart fehlgeschlagen; vorheriges Release wurde wiederhergestellt."
+fi
+
+health_port=$(node -e 'const c=JSON.parse(require("fs").readFileSync("/var/lib/s1panel/config.json")); console.log(String(c.listen).split(":").pop())')
+elapsed=0
+while [ "$elapsed" -lt 30 ]; do
+    if curl --fail --silent "http://127.0.0.1:$health_port/healthz" >/dev/null; then
+        echo "Installation abgeschlossen: Dienst aktiv, Display verbunden, Healthcheck OK."
+        exit 0
+    fi
+    sleep 1
+    elapsed=$((elapsed + 1))
+done
+
+[ -z "$previous" ] || { ln -s "$previous" "$base/current.rollback"; mv -Tf "$base/current.rollback" "$base/current"; systemctl restart s1panel; }
+fail "Healthcheck fehlgeschlagen; vorheriges Release wurde wiederhergestellt."

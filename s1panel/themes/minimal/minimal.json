@@ -1,0 +1,16 @@
+{
+   "orientation": "portrait",
+   "refresh": "redraw",
+   "screens": [{
+      "id": 1,
+      "name": "AceMagic S1 Minimal",
+      "background": "#05090e",
+      "duration": 0,
+      "led_config": { "theme": 2, "intensity": 2, "speed": 2 },
+      "widgets": [{
+         "id": 1, "group": 1, "name": "design_dashboard", "design": "minimal",
+         "rect": { "x": 0, "y": 0, "width": 170, "height": 320 },
+         "sensor": true, "value": "system_status", "format": "{0}", "refresh": 2000, "debug_frame": false
+      }]
+   }]
+}

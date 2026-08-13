@@ -1,0 +1,36 @@
+name: Feature request
+description: Suggest a focused improvement that fits the native 170×320 display.
+title: "[Feature] "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: Need
+      description: Which concrete problem should the feature solve?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the smallest useful solution and where it should appear.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Which simpler alternatives have you considered?
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Project fit
+      options:
+        - label: The proposal stays readable on the native 170×320 display.
+          required: true
+        - label: The proposal does not require Prometheus, Grafana or a separate database.
+          required: true

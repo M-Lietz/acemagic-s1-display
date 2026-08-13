@@ -1,0 +1,154 @@
+{
+  "schema_version": 1,
+  "selection_status": "complete",
+  "target": {
+    "width": 170,
+    "height": 320,
+    "orientation": "portrait"
+  },
+  "designs": [
+    {
+      "number": 1,
+      "id": "instrument",
+      "name": "Instrument",
+      "status": "implemented",
+      "description": "Zwei große Halbkreisinstrumente mit maximaler Präsenz.",
+      "layout": "dual-semicircular-gauges",
+      "preview": "previews/instrument.png",
+      "theme": "themes/instrument/instrument.json",
+      "implementation_batch": 0
+    },
+    {
+      "number": 2,
+      "id": "executive",
+      "name": "Executive",
+      "status": "implemented",
+      "description": "Ruhige Statuskarten mit klarer Systemgesundheit.",
+      "layout": "health-and-value-cards",
+      "preview": "previews/executive.png",
+      "theme": "themes/executive/executive.json",
+      "implementation_batch": 2
+    },
+    {
+      "number": 3,
+      "id": "operations",
+      "name": "Operations",
+      "status": "implemented",
+      "description": "Betriebszustände und Gäste auf einen Blick.",
+      "layout": "operations-grid",
+      "preview": "previews/operations.png",
+      "theme": "themes/operations/operations.json",
+      "implementation_batch": 2
+    },
+    {
+      "number": 4,
+      "id": "telemetry",
+      "name": "Telemetry",
+      "status": "implemented",
+      "description": "CPU- und RAM-Verläufe stehen im Mittelpunkt.",
+      "layout": "large-trend-panels",
+      "preview": "previews/telemetry.png",
+      "theme": "themes/telemetry/telemetry.json",
+      "implementation_batch": 3
+    },
+    {
+      "number": 5,
+      "id": "minimal",
+      "name": "Minimal",
+      "status": "implemented",
+      "description": "Maximale Lesbarkeit mit bewusst wenig Ablenkung.",
+      "layout": "minimal-typography",
+      "preview": "previews/minimal.png",
+      "theme": "themes/minimal/minimal.json",
+      "implementation_batch": 3
+    },
+    {
+      "number": 6,
+      "id": "precision",
+      "name": "Precision",
+      "status": "implemented",
+      "description": "Kalibrierte Messleisten in technischer Präzision.",
+      "layout": "vertical-meters",
+      "preview": "previews/precision.png",
+      "theme": "themes/precision/precision.json",
+      "implementation_batch": 4
+    },
+    {
+      "number": 7,
+      "id": "grand-touring",
+      "name": "Grand Touring",
+      "status": "implemented",
+      "description": "Asymmetrisches Premium-Instrument mit Automotive-Ruhe.",
+      "layout": "flagship-asymmetric-gauge",
+      "preview": "previews/grand-touring.png",
+      "theme": "themes/grand-touring/grand-touring.json",
+      "implementation_batch": 1
+    },
+    {
+      "number": 8,
+      "id": "atelier",
+      "name": "Atelier",
+      "status": "implemented",
+      "description": "Konzentrische Anzeigen im eleganten Uhrendesign.",
+      "layout": "concentric-dial",
+      "preview": "previews/atelier.png",
+      "theme": "themes/atelier/atelier.json",
+      "implementation_batch": 1
+    },
+    {
+      "number": 9,
+      "id": "signature",
+      "name": "Signature",
+      "status": "implemented",
+      "description": "Segmentierte Präzisionsleisten mit Mikrotrends.",
+      "layout": "segmented-level-rails",
+      "preview": "previews/signature.png",
+      "theme": "themes/signature/signature.json",
+      "implementation_batch": 4
+    },
+    {
+      "number": 10,
+      "id": "obsidian",
+      "name": "Obsidian",
+      "status": "implemented",
+      "description": "Monochrome Split-Ansicht mit feiner Materialwirkung.",
+      "layout": "monochrome-split",
+      "preview": "previews/obsidian.png",
+      "theme": "themes/obsidian/obsidian.json",
+      "implementation_batch": 1
+    },
+    {
+      "number": 11,
+      "id": "chronometer",
+      "name": "Chronometer",
+      "status": "implemented",
+      "description": "Zwei klassische Rundinstrumente mit klarer Skala.",
+      "layout": "dual-round-dials",
+      "preview": "previews/chronometer.png",
+      "theme": "themes/chronometer/chronometer.json",
+      "implementation_batch": 4
+    },
+    {
+      "number": 12,
+      "id": "horizon",
+      "name": "Horizon",
+      "status": "implemented",
+      "description": "Große horizontale Ebenen und ruhige Verläufe.",
+      "layout": "horizontal-trends",
+      "preview": "previews/horizon.png",
+      "theme": "themes/horizon/horizon.json",
+      "implementation_batch": 2
+    },
+    {
+      "number": 13,
+      "id": "architect",
+      "name": "Architect",
+      "status": "implemented",
+      "description": "Strenges typografisches Raster ohne Dekoration.",
+      "layout": "editorial-grid",
+      "preview": "previews/architect.png",
+      "theme": "themes/architect/architect.json",
+      "implementation_batch": 3
+    }
+  ]
+}

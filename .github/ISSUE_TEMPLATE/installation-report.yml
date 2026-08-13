@@ -1,0 +1,83 @@
+name: Installation report
+description: Report a successful or failed installation on another AceMagic S1.
+title: "[Installation] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for testing AceMagic S1 Display on another machine. Never include tokens, passwords, private keys, internal hostnames or unreviewed log files.
+
+  - type: input
+    id: hardware
+    attributes:
+      label: Hardware
+      description: Exact AceMagic S1 model and CPU, if known.
+      placeholder: "AceMagic S1, Intel N97"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: installation
+    attributes:
+      label: Installation type
+      options:
+        - Direct Ubuntu installation
+        - Proxmox LXC
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: operating-system
+    attributes:
+      label: Operating system
+      placeholder: "Ubuntu 24.04 amd64"
+    validations:
+      required: true
+
+  - type: input
+    id: proxmox
+    attributes:
+      label: Proxmox VE version
+      description: Enter "not used" when testing only the display runtime.
+      placeholder: "Proxmox VE 9.x"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: lcd
+    attributes:
+      label: LCD detected
+      options:
+        - "Yes"
+        - "No"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: result
+    attributes:
+      label: Result
+      options:
+        - Installation and display successful
+        - Installation successful, display offline
+        - Installation failed
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes or error
+      description: Describe the result and include only short, reviewed excerpts without secrets.
+      placeholder: "What worked, what failed, and the exact step involved."
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I reviewed this report and removed all credentials and private data.
+          required: true

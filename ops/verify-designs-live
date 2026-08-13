@@ -1,0 +1,80 @@
+#!/bin/sh
+set -eu
+
+base_url=${S1PANEL_URL:-http://127.0.0.1:8686}
+config_file=${S1PANEL_CONFIG_FILE:-/var/lib/s1panel/config.json}
+hold_seconds=${S1PANEL_DESIGN_HOLD_SECONDS:-15}
+designs='executive operations telemetry minimal precision grand-touring atelier signature obsidian chronometer horizon architect instrument'
+
+recover_instrument() {
+    node - "$config_file" <<'NODE'
+const fs = require('fs');
+const file = process.argv[2];
+const config = JSON.parse(fs.readFileSync(file, 'utf8'));
+config.theme = 'themes/instrument/instrument.json';
+const temporary = `${file}.recovery-${process.pid}`;
+const stat = fs.statSync(file);
+fs.writeFileSync(temporary, JSON.stringify(config, null, 3) + '\n', { mode: stat.mode });
+fs.chownSync(temporary, stat.uid, stat.gid);
+fs.renameSync(temporary, file);
+NODE
+    systemctl restart s1panel
+}
+
+interrupted() {
+    trap - HUP INT TERM
+    echo 'ABBRUCH: Instrument wird wiederhergestellt' >&2
+    recover_instrument
+    exit 130
+}
+
+trap interrupted HUP INT TERM
+
+fail() {
+    echo "FEHLER: $*" >&2
+    recover_instrument
+    exit 1
+}
+
+active_design() {
+    curl -fsS "$base_url/api/designs" | node -e '
+let data = "";
+process.stdin.on("data", chunk => data += chunk);
+process.stdin.on("end", () => {
+    const active = JSON.parse(data).designs.find(design => design.active);
+    if (!active) process.exit(1);
+    process.stdout.write(active.id);
+});'
+}
+
+stable_pid=$(systemctl show s1panel -p MainPID --value)
+stable_restarts=$(systemctl show s1panel -p NRestarts --value)
+
+for design in $designs; do
+    echo "AKTIVIERE $design"
+    curl -fsS -X POST "$base_url/api/designs/activate" \
+        -H 'Content-Type: application/json' \
+        --data "{\"id\":\"$design\"}" >/dev/null || fail "Aktivierung von $design"
+
+    systemctl is-active --quiet s1panel || fail "$design Dienst inaktiv"
+    [ "$(systemctl show s1panel -p MainPID --value)" = "$stable_pid" ] || fail "$design löste einen Prozesswechsel aus"
+    [ "$(systemctl show s1panel -p NRestarts --value)" = "$stable_restarts" ] || fail "$design erhöhte den Neustartzähler"
+    curl -fsS "$base_url/healthz" >/dev/null || fail "$design Healthcheck fehlgeschlagen"
+    [ "$(active_design)" = "$design" ] || fail "$design ist nicht aktiv"
+
+    elapsed=0
+    while [ "$elapsed" -lt "$hold_seconds" ]; do
+        sleep 5
+        elapsed=$((elapsed + 5))
+        systemctl is-active --quiet s1panel || fail "$design Dienst inaktiv"
+        [ "$(systemctl show s1panel -p MainPID --value)" = "$stable_pid" ] || fail "$design wurde neu gestartet"
+        [ "$(systemctl show s1panel -p NRestarts --value)" = "$stable_restarts" ] || fail "$design erhöhte den Neustartzähler"
+        curl -fsS "$base_url/healthz" >/dev/null || fail "$design Healthcheck fehlgeschlagen"
+        [ "$(active_design)" = "$design" ] || fail "$design ist nicht mehr aktiv"
+    done
+
+    echo "BESTANDEN $design PID=$stable_pid DAUER=${hold_seconds}s ATOMAR=ja"
+done
+
+trap - HUP INT TERM
+echo 'ALLE 13 DESIGNS BESTANDEN; INSTRUMENT IST AKTIV'

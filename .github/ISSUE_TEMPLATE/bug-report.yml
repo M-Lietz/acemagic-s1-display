@@ -1,0 +1,58 @@
+name: Bug report
+description: Report a reproducible problem with the display, Gallery or installer.
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve AceMagic S1 Display. Never include API tokens, passwords, private keys, private hostnames or unreviewed logs.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What happened, and what did you expect instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+      placeholder: |
+        1. Open ...
+        2. Select ...
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Project version
+      placeholder: "v0.1.1 or exact commit"
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: "Ubuntu 24.04 amd64, direct installation or Proxmox LXC"
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Reviewed evidence
+      description: Add a short reviewed log excerpt or screenshot only if it contains no credentials or private data.
+
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I reviewed this report and removed credentials and private data.
+          required: true

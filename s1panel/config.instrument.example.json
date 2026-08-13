@@ -1,0 +1,59 @@
+{
+   "listen": "127.0.0.1:8686",
+   "theme": "themes/instrument/instrument.json",
+   "poll": 250,
+   "refresh": 1600,
+   "heartbeat": 60000,
+   "debug_update": false,
+   "theme_list": [
+      {
+         "name": "AceMagic S1 Instrument",
+         "config": "themes/instrument/instrument.json"
+      }
+   ],
+   "sensors": [
+      {
+         "module": "sensors/system_status.js",
+         "config": {
+            "pve_url_env": "S1PANEL_PVE_URL",
+            "token_env": "S1PANEL_PVE_TOKEN",
+            "node": "pve",
+            "storage": "local-lvm",
+            "ca_file": "",
+            "temperature_path": "",
+            "refresh_ms": 5000,
+            "request_timeout_ms": 3000,
+            "guest_probe_timeout_ms": 3000,
+            "backup_warning_hours": 36,
+            "backup_critical_hours": 72,
+            "guest_memory_probes": [
+               {
+                  "vmid": 100,
+                  "host": "192.0.2.11",
+                  "user": "display-metrics",
+                  "identity_file": "/etc/s1panel/guest-memory-ed25519",
+                  "known_hosts_file": "/etc/s1panel/known_hosts"
+               }
+            ],
+            "allow_http": false
+         }
+      }
+   ],
+   "widgets": [
+      "widgets/instrument_dashboard.js",
+      "widgets/design_dashboard.js"
+   ],
+   "canvas": {
+      "width": 320,
+      "height": 170,
+      "pixel": "RGB16_565"
+   },
+   "device": "CHANGE-ME",
+   "led_config": {
+      "device": "/dev/ttyUSB0",
+      "theme": 2,
+      "speed": 2,
+      "intensity": 2
+   },
+   "portrait": true
+}

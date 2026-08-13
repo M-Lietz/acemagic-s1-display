@@ -1,0 +1,61 @@
+[Unit]
+Description=AceMagic S1 Display
+Documentation=https://github.com/M-Lietz/acemagic-s1-display
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=notify
+User=s1panel
+Group=s1panel
+SupplementaryGroups=acemagic-s1
+WorkingDirectory=/opt/acemagic-s1-display/current/s1panel
+# Das USB-HID-Interface braucht nach dem vorherigen Prozess ein kurzes Freigabefenster.
+ExecStartPre=/bin/sleep 2
+ExecStart=/usr/bin/node main.js
+Environment=NODE_ENV=production
+Environment=SERVICE=true
+Environment=S1PANEL_CONFIG=/var/lib/s1panel
+Environment=XDG_CACHE_HOME=/run/s1panel/cache
+EnvironmentFile=/etc/s1panel/credentials.env
+
+Restart=on-failure
+RestartSec=3
+TimeoutStartSec=30
+WatchdogSec=45s
+NotifyAccess=all
+
+RuntimeDirectory=s1panel
+RuntimeDirectoryMode=0750
+StateDirectory=s1panel
+StateDirectoryMode=0750
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectHostname=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RemoveIPC=true
+KeyringMode=private
+CapabilityBoundingSet=
+AmbientCapabilities=
+# libudev/hidapi benötigt AF_NETLINK für die Erkennung des USB-Displays.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+SystemCallArchitectures=native
+TasksMax=64
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

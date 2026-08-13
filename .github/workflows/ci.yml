@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Node.js einrichten
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            s1panel/package-lock.json
+            s1panel/gui/package-lock.json
+
+      - name: Native Build-Abhängigkeiten installieren
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            build-essential libudev-dev libusb-1.0-0-dev \
+            libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev
+
+      - name: Laufzeit installieren und testen
+        working-directory: s1panel
+        run: |
+          npm ci
+          npm test
+          npm audit --audit-level=high
+          npm run render:instrument
+          npm run render:designs
+
+      - name: Renderer-Ausgaben prüfen
+        run: git diff --exit-code -- s1panel/screenshots s1panel/designs/previews
+
+      - name: Gallery bauen und prüfen
+        working-directory: s1panel/gui
+        run: |
+          npm ci
+          npm run build
+          npm audit --audit-level=high
+
+      - name: Release-Archiv bauen
+        run: |
+          find ops -type f -print | while IFS= read -r script; do
+            if test "$(head -n 1 "$script")" = '#!/bin/sh'; then
+              sh -n "$script"
+            fi
+          done
+          ./ops/build-release
+          checksum=$(find dist -maxdepth 1 -name '*.tar.gz.sha256' -print -quit)
+          test -n "$checksum"
+          (cd dist && sha256sum --check "$(basename "$checksum")")
+          archive=${checksum%.sha256}
+          tar -tzf "$archive" > "$RUNNER_TEMP/release-files.txt"
+          grep -qx 'acemagic-s1-display/install' "$RUNNER_TEMP/release-files.txt"
+          grep -qx 'acemagic-s1-display/docs/INSTALLATION.md' "$RUNNER_TEMP/release-files.txt"
+          tar -xOf "$archive" acemagic-s1-display/RELEASE > "$RUNNER_TEMP/RELEASE"
+          grep -q '^source=https://github.com/' "$RUNNER_TEMP/RELEASE"
+          mkdir "$RUNNER_TEMP/release-tree"
+          tar --same-permissions -xzf "$archive" -C "$RUNNER_TEMP/release-tree"
+          release_root="$RUNNER_TEMP/release-tree/acemagic-s1-display"
+          test "$(stat -c %a "$release_root/README.md")" = 644
+          test "$(stat -c %a "$release_root/install")" = 755
+          test -z "$(find "$release_root" \( -type f -o -type d \) -perm /002 -print -quit)"

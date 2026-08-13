@@ -1,0 +1,38 @@
+{
+  "name": "acemagic-s1-display",
+  "version": "0.1.2",
+  "packageManager": "npm@11.17.0",
+  "private": true,
+  "description": "Native system dashboard for the AceMagic S1 LCD",
+  "main": "main.js",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "render:instrument": "node scripts/render_instrument_preview.js",
+    "render:motion": "node scripts/render_instrument_motion.js",
+    "render:designs": "node scripts/render_design_collection.js"
+  },
+  "author": "Merlin Lietz and contributors",
+  "contributors": [
+    "Tomasz Jaworski"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/M-Lietz/acemagic-s1-display.git"
+  },
+  "bugs": {
+    "url": "https://github.com/M-Lietz/acemagic-s1-display/issues"
+  },
+  "homepage": "https://github.com/M-Lietz/acemagic-s1-display#readme",
+  "license": "GPL-3.0-only",
+  "engines": {
+    "node": ">=24 <25",
+    "npm": ">=11 <12"
+  },
+  "dependencies": {
+    "canvas": "^3.2.3",
+    "express": "^5.2.1",
+    "node-hid": "^3.4.0",
+    "serialport": "^13.0.0",
+    "winston": "^3.19.0"
+  }
+}

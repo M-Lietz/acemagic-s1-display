@@ -1,0 +1,36 @@
+{
+  "name": "s1panel-gui",
+  "version": "0.1.2",
+  "packageManager": "npm@11.17.0",
+  "private": true,
+  "author": "Merlin Lietz and contributors",
+  "contributors": [
+    "Tomasz Jaworski"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/M-Lietz/acemagic-s1-display.git"
+  },
+  "bugs": {
+    "url": "https://github.com/M-Lietz/acemagic-s1-display/issues"
+  },
+  "homepage": "https://github.com/M-Lietz/acemagic-s1-display#readme",
+  "license": "GPL-3.0-only",
+  "engines": {
+    "node": ">=24 <25",
+    "npm": ">=11 <12"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "test": "vite build --mode development",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "vue": "3.5.41"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "6.0.8",
+    "vite": "8.2.1"
+  }
+}

@@ -1,0 +1,4 @@
+#!/bin/sh
+set -eu
+
+exec /usr/bin/awk '/^(MemTotal|MemAvailable):/ { print }' /proc/meminfo

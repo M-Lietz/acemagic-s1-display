@@ -1,0 +1,96 @@
+#!/bin/sh
+set -eu
+
+fail() {
+    echo "Fehler: $*" >&2
+    exit 1
+}
+
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+repo_dir=$(CDPATH= cd -- "$script_dir/.." && pwd)
+output_dir=${1:-"$repo_dir/dist"}
+
+git_repo() {
+    git -c safe.directory="$repo_dir" -C "$repo_dir" "$@"
+}
+
+node_major=$(node -p 'process.versions.node.split(".")[0]')
+npm_major=$(npm --version | cut -d. -f1)
+[ "$node_major" = 24 ] || fail "Node.js 24 ist erforderlich; gefunden wurde $(node --version)."
+[ "$npm_major" = 11 ] || fail "npm 11 ist erforderlich; gefunden wurde $(npm --version)."
+
+full_revision=$(git_repo rev-parse HEAD)
+revision=$(git_repo rev-parse --short=12 HEAD)
+if ! git_repo diff --quiet || ! git_repo diff --cached --quiet ||
+   [ -n "$(git_repo ls-files --others --exclude-standard)" ]; then
+    revision="${revision}-dirty"
+fi
+version=$(node -p "require('$repo_dir/s1panel/package.json').version")
+release_name="acemagic-s1-display-${version}"
+archive="$output_dir/$release_name.tar.gz"
+checksum="$archive.sha256"
+stage=$(mktemp -d)
+
+cleanup() {
+    [ ! -d "$stage" ] || find "$stage" -depth -delete
+}
+trap cleanup EXIT HUP INT TERM
+
+release_root="$stage/acemagic-s1-display"
+app_root="$release_root/s1panel"
+gui_build="$stage/gui-build"
+
+install -d -m 0755 "$output_dir" "$app_root" "$gui_build"
+[ ! -e "$archive" ] && [ ! -e "$checksum" ] || fail "Release oder Prüfsumme existiert bereits: $release_name"
+
+install -m 0644 "$repo_dir/LICENSE" "$repo_dir/NOTICE.md" "$repo_dir/README.md" \
+    "$repo_dir/CHANGELOG.md" "$release_root/"
+cp -a "$repo_dir/docs" "$repo_dir/ops" "$release_root/"
+install -m 0755 "$repo_dir/ops/install-release" "$release_root/install"
+for file in api.js config.instrument.example.json lcd_device.js lcd_thread.js \
+            led_device.js led_thread.js logger.js main.js package.json package-lock.json; do
+    install -m 0644 "$repo_dir/s1panel/$file" "$app_root/$file"
+done
+
+cp -a "$repo_dir/s1panel/lib" "$repo_dir/s1panel/sensors" \
+      "$repo_dir/s1panel/themes" "$repo_dir/s1panel/widgets" "$app_root/"
+install -d -m 0755 "$app_root/scripts"
+install -m 0755 "$repo_dir/s1panel/scripts/detect_devices.js" "$app_root/scripts/"
+install -d -m 0755 "$app_root/designs"
+install -m 0644 "$repo_dir/s1panel/designs/catalog.json" "$app_root/designs/catalog.json"
+cp -a "$repo_dir/s1panel/designs/previews" "$app_root/designs/"
+
+cp -a "$repo_dir/s1panel/gui/index.html" "$repo_dir/s1panel/gui/package.json" \
+      "$repo_dir/s1panel/gui/package-lock.json" "$repo_dir/s1panel/gui/vite.config.mjs" \
+      "$repo_dir/s1panel/gui/src" "$gui_build/"
+
+(cd "$app_root" && npm ci --omit=dev && npm audit --omit=dev)
+(cd "$gui_build" && npm ci && npm audit && npm run build)
+install -d -m 0755 "$app_root/gui"
+cp -a "$gui_build/dist" "$app_root/gui/"
+
+{
+    printf 'version=%s\n' "$version"
+    printf 'revision=%s\n' "$revision"
+    printf 'node=24\n'
+    printf 'source=https://github.com/M-Lietz/acemagic-s1-display/tree/%s\n' "$full_revision"
+    printf 'upstream=https://github.com/tjaworski/AceMagic-S1-LED-TFT-Linux\n'
+} > "$release_root/RELEASE"
+
+# Reproduzierbare öffentliche Dateirechte unabhängig von lokaler umask:
+# Verzeichnisse und ausführbare Helfer 0755, alle übrigen Dateien 0644.
+find "$release_root" -type d -exec chmod 0755 {} +
+find "$release_root" -type f ! -perm -0100 -exec chmod 0644 {} +
+find "$release_root" -type f -perm -0100 -exec chmod 0755 {} +
+
+source_date_epoch=${SOURCE_DATE_EPOCH:-$(git_repo log -1 --format=%ct)}
+tar --sort=name --mtime="@$source_date_epoch" --owner=0 --group=0 --numeric-owner \
+    -C "$stage" -cf - acemagic-s1-display | gzip -n > "$archive"
+
+(
+    cd "$output_dir"
+    sha256sum "$(basename "$archive")" > "$(basename "$checksum")"
+)
+cat "$checksum"
+echo "Release erstellt: $archive"
+echo "Prüfsumme erstellt: $checksum"

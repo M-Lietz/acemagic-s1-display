@@ -1,0 +1,22 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /s1panel
+    schedule:
+      interval: monthly
+    groups:
+      runtime-dependencies:
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    directory: /s1panel/gui
+    schedule:
+      interval: monthly
+    groups:
+      gallery-dependencies:
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

@@ -1,0 +1,36 @@
+#!/bin/sh
+set -eu
+
+fail() {
+    echo "Fehler: $*" >&2
+    exit 1
+}
+
+[ "$(id -u)" -eq 0 ] || fail "Setup muss auf dem Geräte-Host als root laufen."
+
+hardware_group=acemagic-s1
+hardware_gid=${S1PANEL_HARDWARE_GID:-990}
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+rule_source="$script_dir/udev/70-acemagic-s1.rules"
+
+[ -f "$rule_source" ] || fail "udev-Regel fehlt: $rule_source"
+
+if getent group "$hardware_group" >/dev/null; then
+    [ "$(getent group "$hardware_group" | cut -d: -f3)" = "$hardware_gid" ] ||
+        fail "Gruppe $hardware_group besitzt nicht GID $hardware_gid."
+elif getent group "$hardware_gid" >/dev/null; then
+    fail "GID $hardware_gid ist bereits durch eine andere Gruppe belegt."
+else
+    groupadd --system --gid "$hardware_gid" "$hardware_group"
+fi
+
+install -o root -g root -m 0644 "$rule_source" /etc/udev/rules.d/70-acemagic-s1.rules
+udevadm control --reload-rules
+udevadm trigger --action=change --subsystem-match=usb --attr-match=idVendor=04d9 --attr-match=idProduct=fd01
+for tty_device in /sys/class/tty/ttyUSB*; do
+    [ ! -e "$tty_device" ] || udevadm trigger --action=change "$tty_device"
+done
+udevadm settle
+
+echo "Hardwarezugriff eingerichtet: Gruppe $hardware_group (GID $hardware_gid)."
+echo "Installiert: /etc/udev/rules.d/70-acemagic-s1.rules"

@@ -1,0 +1,126 @@
+#!/bin/sh
+set -eu
+
+fail() {
+    echo "Fehler: $*" >&2
+    exit 1
+}
+
+usage() {
+    echo "Aufruf: sudo $0 ARCHIV RELEASE-ID" >&2
+    exit 2
+}
+
+[ "$#" -eq 2 ] || usage
+[ "$(id -u)" -eq 0 ] || fail "Deployment muss als root ausgeführt werden."
+
+archive=$(readlink -f "$1")
+release_id=$2
+case "$release_id" in
+    ''|*[!A-Za-z0-9._-]*) fail "Ungültige Release-ID: $release_id" ;;
+esac
+[ -f "$archive" ] || fail "Archiv nicht gefunden: $archive"
+
+base=${S1PANEL_RELEASE_ROOT:-/opt/acemagic-s1-display}
+releases="$base/releases"
+target="$releases/$release_id"
+staging="$releases/.${release_id}.staging.$$"
+health_url=${S1PANEL_HEALTH_URL:-http://127.0.0.1:8686/healthz}
+
+[ ! -e "$target" ] || fail "Release existiert bereits: $target"
+install -d -o root -g root -m 0755 "$releases" "$staging"
+
+validate_tree_links() {
+    tree_root=$(readlink -f "$1")
+    find "$tree_root" -type l -print | while IFS= read -r link; do
+        link_target=$(readlink -f "$link") || fail "Defekter symbolischer Link im Release: $link"
+        case "$link_target" in
+            "$tree_root"/*) ;;
+            *) fail "Symbolischer Link verlässt das Release: $link" ;;
+        esac
+    done
+}
+
+cleanup() {
+    [ ! -d "$staging" ] || find "$staging" -depth -delete
+}
+trap cleanup EXIT HUP INT TERM
+
+tar -tzf "$archive" | awk '
+    $0 !~ /^acemagic-s1-display\// { exit 1 }
+    $0 ~ /(^|\/)\.\.($|\/)/ { exit 1 }
+' || fail "Archiv enthält unzulässige Pfade."
+
+LC_ALL=C tar -tvzf "$archive" | node -e '
+const path = require("node:path");
+const root = "acemagic-s1-display";
+let invalid = "";
+for (const line of require("node:fs").readFileSync(0, "utf8").split("\n")) {
+    if (!line) continue;
+    if (line.startsWith("h")) {
+        invalid = "Hardlinks sind nicht erlaubt";
+        break;
+    }
+    if (!line.startsWith("l")) continue;
+    const marker = line.indexOf(" -> ");
+    const fields = marker < 0 ? [] : line.slice(0, marker).trim().split(/\s+/);
+    const link = fields.slice(5).join(" ");
+    const target = marker < 0 ? "" : line.slice(marker + 4);
+    const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(link), target));
+    if (!link.includes("/node_modules/") || !link.includes("/.bin/") ||
+        !target || path.posix.isAbsolute(target) ||
+        (resolved !== root && !resolved.startsWith(root + "/"))) {
+        invalid = `unzulässiger symbolischer Link: ${link || line}`;
+        break;
+    }
+}
+if (invalid) {
+    console.error(invalid);
+    process.exit(1);
+}
+' || fail "Archiv enthält unzulässige Links."
+
+tar -xzf "$archive" -C "$staging" --strip-components=1 \
+    --no-same-owner --no-same-permissions
+[ -f "$staging/RELEASE" ] || fail "Release-Metadaten fehlen."
+[ -f "$staging/s1panel/main.js" ] || fail "main.js fehlt."
+[ -d "$staging/s1panel/gui/dist" ] || fail "Gebauter Gallery-Client fehlt."
+validate_tree_links "$staging"
+
+chown -R root:root "$staging"
+find "$staging" -type d -exec chmod 0755 {} +
+find "$staging" -type f ! -perm -0100 -exec chmod 0644 {} +
+find "$staging" -type f -perm -0100 -exec chmod 0755 {} +
+
+(cd "$staging/s1panel" && node -e '
+for (const name of ["canvas", "express", "node-hid", "serialport", "winston"]) {
+    require(name);
+}
+') || fail "Laufzeitmodule konnten nicht geladen werden."
+
+mv "$staging" "$target"
+trap - EXIT HUP INT TERM
+previous=''
+[ ! -L "$base/current" ] || previous=$(readlink -f "$base/current")
+ln -s "$target" "$base/current.next"
+mv -Tf "$base/current.next" "$base/current"
+
+if systemctl restart s1panel; then
+    elapsed=0
+    while [ "$elapsed" -lt 30 ]; do
+        if systemctl is-active --quiet s1panel && curl -fsS "$health_url" >/dev/null 2>&1; then
+            echo "Release aktiv und gesund: $target"
+            exit 0
+        fi
+        sleep 1
+        elapsed=$((elapsed + 1))
+    done
+fi
+
+if [ -n "$previous" ] && [ -d "$previous" ]; then
+    ln -s "$previous" "$base/current.rollback"
+    mv -Tf "$base/current.rollback" "$base/current"
+    systemctl restart s1panel
+    echo "Deployment fehlgeschlagen; Rollback aktiv: $previous" >&2
+fi
+exit 1

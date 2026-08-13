@@ -1,0 +1,35 @@
+#!/bin/sh
+set -eu
+
+fail() {
+    echo "Fehler: $*" >&2
+    exit 1
+}
+
+[ "$(id -u)" -eq 0 ] || fail "Setup muss im Panel-System als root laufen."
+[ -n "${S1PANEL_ADMIN_NETWORK:-}" ] ||
+    fail "S1PANEL_ADMIN_NETWORK fehlt, zum Beispiel ADMIN-NETZ/CIDR."
+command -v ufw >/dev/null 2>&1 || fail "ufw ist nicht installiert."
+command -v sshd >/dev/null 2>&1 || fail "OpenSSH Server ist nicht installiert."
+
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+ssh_source="$script_dir/ssh/60-s1panel-hardening.conf"
+[ -f "$ssh_source" ] || fail "SSH-Konfiguration fehlt: $ssh_source"
+
+install -o root -g root -m 0644 "$ssh_source" \
+    /etc/ssh/sshd_config.d/60-s1panel-hardening.conf
+sshd -t
+
+ufw default deny incoming
+ufw default allow outgoing
+ufw allow from "$S1PANEL_ADMIN_NETWORK" to any port 22 proto tcp \
+    comment 'SSH aus dem Admin-Netz'
+ufw --force enable
+
+if systemctl is-active --quiet ssh.service; then
+    systemctl reload ssh.service
+fi
+
+echo "SSH-Hardening installiert: /etc/ssh/sshd_config.d/60-s1panel-hardening.conf"
+echo "UFW aktiv: SSH ist aus $S1PANEL_ADMIN_NETWORK erlaubt."
+echo "Wichtig: Vor dem Abmelden eine neue SSH-Verbindung testen."

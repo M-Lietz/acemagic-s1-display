@@ -1,0 +1,75 @@
+#!/bin/sh
+set -eu
+
+fail() {
+    echo "Fehler: $*" >&2
+    exit 1
+}
+
+[ "$(id -u)" -eq 0 ] || fail "Setup muss im Panel-System als root laufen."
+[ "$(node -p 'process.versions.node.split(".")[0]')" = 24 ] ||
+    fail "Node.js 24 ist erforderlich."
+
+service_user=s1panel
+service_group=s1panel
+hardware_group=acemagic-s1
+hardware_gid=${S1PANEL_HARDWARE_GID:-990}
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+unit_source="$script_dir/systemd/s1panel.service"
+
+[ -f "$unit_source" ] || fail "systemd-Unit fehlt: $unit_source"
+
+if getent group "$hardware_group" >/dev/null; then
+    [ "$(getent group "$hardware_group" | cut -d: -f3)" = "$hardware_gid" ] ||
+        fail "Gruppe $hardware_group besitzt nicht GID $hardware_gid."
+elif getent group "$hardware_gid" >/dev/null; then
+    fail "GID $hardware_gid ist bereits durch eine andere Gruppe belegt."
+else
+    groupadd --system --gid "$hardware_gid" "$hardware_group"
+fi
+
+getent group "$service_group" >/dev/null || groupadd --system "$service_group"
+if id "$service_user" >/dev/null 2>&1; then
+    usermod --append --groups "$hardware_group" "$service_user"
+else
+    useradd --system --gid "$service_group" --groups "$hardware_group" \
+        --home-dir /nonexistent --shell /usr/sbin/nologin "$service_user"
+fi
+
+install -d -o root -g "$service_group" -m 0750 /etc/s1panel
+install -d -o "$service_user" -g "$service_group" -m 0750 /var/lib/s1panel
+[ -f /var/lib/s1panel/config.json ] || {
+    [ -f /etc/s1panel/config.json ] ||
+        fail "/var/lib/s1panel/config.json und eine migrierbare /etc/s1panel/config.json fehlen."
+    install -o "$service_user" -g "$service_group" -m 0640 \
+        /etc/s1panel/config.json /var/lib/s1panel/config.json
+    find /etc/s1panel/config.json -maxdepth 0 -type f -delete
+    echo "Alte Konfigurationskopie nach erfolgreicher Migration aus /etc/s1panel entfernt."
+}
+[ -f /etc/s1panel/credentials.env ] || fail "/etc/s1panel/credentials.env fehlt."
+
+chown "$service_user:$service_group" /var/lib/s1panel/config.json
+chmod 0640 /var/lib/s1panel/config.json
+if [ -f /var/lib/s1panel/config.json.previous ]; then
+    chown "$service_user:$service_group" /var/lib/s1panel/config.json.previous
+    chmod 0640 /var/lib/s1panel/config.json.previous
+fi
+chown root:root /etc/s1panel/credentials.env
+chmod 0600 /etc/s1panel/credentials.env
+
+for private_file in /etc/s1panel/guest-memory-ed25519 /etc/s1panel/known_hosts; do
+    [ ! -f "$private_file" ] || {
+        chown root:"$service_group" "$private_file"
+        chmod 0640 "$private_file"
+    }
+done
+
+install -o root -g root -m 0644 "$unit_source" /etc/systemd/system/s1panel.service
+systemctl daemon-reload
+systemctl enable s1panel.service
+
+echo "Dienstkonto eingerichtet: $service_user ohne Login und Home."
+echo "Installiert: /etc/systemd/system/s1panel.service"
+[ ! -d /etc/systemd/system/s1panel.service.d ] || \
+    echo "Vorhandene lokale systemd-Drop-ins wurden unverändert beibehalten."
+echo "Veränderbare Konfiguration: /var/lib/s1panel/config.json"

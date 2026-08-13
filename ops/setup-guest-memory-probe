@@ -1,0 +1,86 @@
+#!/bin/sh
+set -eu
+
+usage() {
+    echo "Aufruf: sudo $0 --user BENUTZER --public-key DATEI [--dry-run]" >&2
+    exit 2
+}
+
+guest_user=''
+public_key_file=''
+dry_run=0
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --user)
+            [ "$#" -ge 2 ] || usage
+            guest_user=$2
+            shift 2
+            ;;
+        --public-key)
+            [ "$#" -ge 2 ] || usage
+            public_key_file=$2
+            shift 2
+            ;;
+        --dry-run)
+            dry_run=1
+            shift
+            ;;
+        *) usage ;;
+    esac
+done
+
+[ "$(id -u)" -eq 0 ] || {
+    echo "Fehler: Das Setup muss mit sudo oder als root laufen." >&2
+    exit 1
+}
+[ -n "$guest_user" ] && id "$guest_user" >/dev/null 2>&1 || {
+    echo "Fehler: Der vorhandene Benutzer wurde nicht gefunden: $guest_user" >&2
+    exit 1
+}
+[ -f "$public_key_file" ] || {
+    echo "Fehler: Public-Key-Datei nicht gefunden: $public_key_file" >&2
+    exit 1
+}
+
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+probe_source="$script_dir/s1panel-memory-probe"
+[ -x "$probe_source" ] || {
+    echo "Fehler: Probe-Skript fehlt neben dem Setup: $probe_source" >&2
+    exit 1
+}
+
+key=$(awk 'NF >= 2 && $1 ~ /^ssh-/ { print $1 " " $2; exit }' "$public_key_file")
+[ -n "$key" ] || {
+    echo "Fehler: Keine gueltige SSH-Public-Key-Zeile gefunden." >&2
+    exit 1
+}
+
+guest_home=$(getent passwd "$guest_user" | awk -F: '{ print $6 }')
+guest_group=$(id -gn "$guest_user")
+ssh_dir="$guest_home/.ssh"
+authorized_keys="$ssh_dir/authorized_keys"
+entry="restrict,command=\"/usr/local/sbin/s1panel-memory-probe\" $key s1panel-memory-probe"
+
+if [ "$dry_run" -eq 1 ]; then
+    echo "DRY RUN: installiere Probe nach /usr/local/sbin/s1panel-memory-probe"
+    echo "DRY RUN: aktualisiere $authorized_keys fuer $guest_user"
+    exit 0
+fi
+
+install -o root -g root -m 0755 "$probe_source" /usr/local/sbin/s1panel-memory-probe
+install -d -o "$guest_user" -g "$guest_group" -m 0700 "$ssh_dir"
+
+temp_file=$(mktemp)
+trap 'test ! -e "$temp_file" || unlink "$temp_file"' EXIT HUP INT TERM
+
+if [ -f "$authorized_keys" ]; then
+    backup="$authorized_keys.s1panel-backup-$(date +%Y%m%d-%H%M%S)"
+    cp -a "$authorized_keys" "$backup"
+    awk '!/ s1panel-memory-probe$/' "$authorized_keys" > "$temp_file"
+fi
+printf '%s\n' "$entry" >> "$temp_file"
+install -o "$guest_user" -g "$guest_group" -m 0600 "$temp_file" "$authorized_keys"
+
+echo "RAM-Probe eingerichtet: $guest_user darf mit diesem Key nur /proc/meminfo lesen."
+echo "Es wurde kein Benutzer und kein Paket angelegt."

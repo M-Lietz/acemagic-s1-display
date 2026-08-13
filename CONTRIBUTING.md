@@ -1,6 +1,6 @@
 # Mitwirken
 
-Danke für dein Interesse am AceMagic S1 Display.
+Danke für dein Interesse am AceMagic S1 Display. Diese Anleitung gilt für externe Beiträge; Merlins interne Agentenregeln stehen in `AGENTS.md`.
 
 ## Änderungen vorbereiten
 

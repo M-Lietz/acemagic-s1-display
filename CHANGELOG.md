@@ -5,6 +5,11 @@ orientiert sich an Keep a Changelog; Versionen folgen Semantic Versioning.
 
 ## [Unreleased]
 
+### Geändert
+
+- reproduzierbare Laufzeit- und Gallery-Lockfiles auf aktuelle kompatible
+  Patchstände aktualisiert
+
 ## [0.1.2] - 2026-08-13
 
 ### Hinzugefügt

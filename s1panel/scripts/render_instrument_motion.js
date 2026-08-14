@@ -15,7 +15,7 @@ const dashboard = require('../widgets/instrument_dashboard');
 const fixture = require('../test/fixtures/instrument_status.json');
 
 const root = path.resolve(__dirname, '..');
-const output = path.join(root, 'screenshots', 'instrument-motion-preview.gif');
+const output = path.resolve(process.argv[2] || path.join(root, 'screenshots', 'instrument-motion-preview.gif'));
 async function main() {
     const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'acemagic-motion-'));
     const canvas = createCanvas(170, 320);
@@ -35,6 +35,7 @@ async function main() {
     target.metrics.healthLevel = 'warning';
 
     try {
+        fs.mkdirSync(path.dirname(output), { recursive: true });
         await dashboard.draw(context, start, 0, 0, config);
         config._private.history.cpu = [5, 7, 6, 9, 6].map((value, index) => ({
             time: now - (4 - index) * 60000,

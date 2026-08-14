@@ -5,10 +5,18 @@ orientiert sich an Keep a Changelog; Versionen folgen Semantic Versioning.
 
 ## [Unreleased]
 
+### Hinzugefügt
+
+- pixelgenaue RGB565-Tests für begrenzte Instrument-Teilaktualisierungen
+- getrennte, von Git ausgeschlossene Bewegungsvorschau für Kandidatentests
+
 ### Geändert
 
 - reproduzierbare Laufzeit- und Gallery-Lockfiles auf aktuelle kompatible
   Patchstände aktualisiert
+- Instrument überträgt animierte Änderungen per vorhandenem `LCD_REFRESH`;
+  Start, Neuverbindung, Fehler und große Änderungen bleiben Vollbilder
+- alle zwölf weiteren Designs behalten ihren bisherigen Vollbildweg unverändert
 
 ## [0.1.2] - 2026-08-13
 

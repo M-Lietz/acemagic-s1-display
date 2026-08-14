@@ -1,6 +1,7 @@
 {
    "orientation": "portrait",
-   "refresh": "redraw",
+   "refresh": "diff",
+   "frame_interval_ms": 160,
    "screens": [
       {
          "id": 1,

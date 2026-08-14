@@ -50,6 +50,15 @@ Release geladen.
 - Der vorhandene `s1panel`-Treiber übernimmt Orientierung, RGB565-Konvertierung
   und USB-HID-Übertragung. Einzelne bekannte HID-Aussetzer werden toleriert;
   nach drei aufeinanderfolgenden Fehlern öffnet der Worker das Gerät neu.
+- Instrument wird weiterhin als vollständiger Frame in zwei RGB565-Bildpuffer
+  gezeichnet. Ein pixelgenauer Vergleich fasst Änderungen in 16×16-Kacheln
+  zusammen und überträgt nur diese Bereiche per vorhandener `LCD_REFRESH`-
+  Funktion. Der statische Rest bleibt unverändert im TFT-Speicher stehen.
+- Start, Designwechsel, USB-Neuverbindung und Übertragungsfehler erzwingen
+  weiterhin einen vollständigen Frame. Wären mindestens so viele HID-Pakete
+  wie bei einem Vollbild nötig, fällt der Renderer ebenfalls automatisch auf
+  den bewährten Vollbildweg zurück. Alle anderen Designs behalten diesen
+  bisherigen Vollbildweg unverändert bei.
 - Ein lokaler `/healthz`-Endpunkt und der systemd-Watchdog überwachen, ob LCD,
   Renderer und Hauptprozess tatsächlich aktiv bleiben.
 - Die Gallery liest ausschließlich den versionierten Designkatalog. Eine
@@ -99,3 +108,17 @@ Prozent    = Gastlast ÷ physischer Host-RAM × 100
 Gestoppte Gäste verbrauchen in dieser Rechnung keinen RAM. Der Hostzustand,
 Gastzählung und Storage bleiben auch dann verfügbar, wenn eine VM ausgeschaltet
 oder gelöscht wurde.
+
+## Bewusste Bildstrategie
+
+Es gibt kein zweites, separat gepflegtes Standbild und keine ausgeschnittenen
+Flächen im Design. Der Canvas erzeugt stets das komplette gewünschte Bild. Der
+Vergleich der beiden letzten Bildpuffer entscheidet anschließend nur, welche
+Pixel wirklich zum Display gesendet werden müssen. Damit bleiben Vorschau,
+Vollbildübertragung und Teilaktualisierung optisch identisch und können nicht
+auseinanderlaufen.
+
+Während eine HID-Übertragung läuft, wird kein weiterer Transferstapel erzeugt.
+Spätere Animationsstände werden beim nächsten freien Durchlauf frisch gerendert.
+Die Warteschlange bleibt dadurch auf höchstens einen begrenzten Bildstand
+beschränkt und kann sich bei einem langsamen USB-Gerät nicht endlos aufbauen.

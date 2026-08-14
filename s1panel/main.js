@@ -18,6 +18,7 @@ const node_canvas = require('canvas');
 const logger      = require('./logger');
 const api         = require('./api');
 const webSecurity = require('./lib/web_security');
+const updateRegions = require('./lib/update_regions');
 
 const app_dir = __dirname;
 const config_dir = process.env.S1PANEL_CONFIG || app_dir;
@@ -124,6 +125,30 @@ function start_update_screen(context, state, config, fulfill) {
     });
 }
 
+function start_diff_screen(context, previousContext, state, config, fulfill) {
+
+    const width = config.canvas.width;
+    const height = config.canvas.height;
+    const current = context.getImageData(0, 0, width, height);
+    const previous = previousContext.getImageData(0, 0, width, height);
+    const plan = updateRegions.planUpdates(previous, current, width, height);
+
+    clear_pending_screen_updates(state);
+
+    if (!plan.chunks.length) return fulfill(false);
+
+    if (plan.type === 'redraw') {
+        lcd_redraw(state, current);
+        return fulfill(true);
+    }
+
+    plan.chunks.forEach(rect => {
+        lcd_update(state, rect, context.getImageData(rect.x, rect.y, rect.width, rect.height));
+    });
+    state.stat_count = plan.chunks.length;
+    return fulfill(true);
+}
+
 function clear_pending_screen_updates(state) {
 
     while (state.changes.length) {
@@ -173,6 +198,15 @@ function update_device_screen(context, state, config, theme) {
 
                     case 'update':
                         return start_update_screen(context, state, config, fulfill);
+
+                    case 'diff':
+                        return start_diff_screen(
+                            context,
+                            state.canvas_context[state.active_context ^ 1],
+                            state,
+                            config,
+                            fulfill
+                        );
 
                     case 'row':
                     case 'column':
@@ -655,7 +689,7 @@ function start_draw_canvas(state, config, theme) {
 
                             start_draw_canvas(state, config, theme);
 
-                        }, config.poll);
+                        }, Math.max(100, Number(theme.frame_interval_ms) || config.poll));
                     });
                 });
             });

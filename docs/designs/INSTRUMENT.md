@@ -11,8 +11,16 @@ der instrumentellen Hauptansicht direkt ablesbar.
 - Vorschau: `s1panel/designs/previews/instrument.png`
 - Charakter: technisch, präsent, hochwertig
 - Hauptakzent: Cyan/Blau; Grün nur für gesunde Zustände, Amber für Temperatur
-- Bewegung: geglättete Werte und fünfminütige CPU-/RAM-Historie
+- Bewegung: geglättete Werte und fünfminütige CPU-/RAM-Historie; der Renderer
+  plant höchstens etwa alle 160 ms einen neuen Animationsstand
 - Zustände: `ONLINE`, `WARNING`, `OFFLINE` und RAM `N/A`
 
 Dieses Design bleibt der visuelle und funktionale Regressionstest für die
 gesamte Kollektion.
+
+Für die Bewegung zeichnet Instrument intern weiterhin das vollständige
+170×320-Bild. Zum TFT werden im Normalfall nur veränderte RGB565-Bereiche
+übertragen. Statische Beschriftungen, Rahmen und Skalen bleiben damit ruhig;
+nach Start, Neuverbindung oder Fehler wird automatisch ein kompletter Frame
+gesendet. Tests setzen die Teilbereiche wieder zusammen und vergleichen das
+Ergebnis pixelgenau mit dem vollständigen Zielbild.

@@ -121,6 +121,27 @@ Healthcheck, wird der vorherige Link automatisch wiederhergestellt.
 
 ## Abnahme und Rollback
 
+Eine Änderung am Instrument wird zuerst vollständig außerhalb des Live-
+Containers geprüft:
+
+```bash
+cd s1panel
+npm test
+node scripts/render_instrument_motion.js \
+  ../proofs/processed/instrument-candidate.gif
+```
+
+Der zweite Befehl schreibt bewusst eine getrennte, von Git ausgeschlossene
+Kandidatenvorschau. Er überschreibt weder die veröffentlichte Vorschau noch das
+aktive Display. Erst wenn Bild und Tests passen, wird aus einem sauberen Commit
+ein Kandidatenarchiv gebaut. Ein Hardwaretest auf dem TFT ist ein eigener,
+ausdrücklich freizugebender Schritt: Vorher werden aktives Release und
+Konfiguration gesichert; anschließend werden Healthcheck, Journal und Display
+kontrolliert. Ohne Abnahme wird der bisherige `current`-Link wieder aktiviert.
+
+Der vorhandene Produktivstand bleibt während der lokalen Prüfung vollständig
+unangetastet. Ein Git-Branch oder Draft-PR verändert CT 102 ebenfalls nicht.
+
 ```bash
 curl --fail http://127.0.0.1:8686/healthz
 systemctl show s1panel -p ActiveState -p MainPID -p NRestarts

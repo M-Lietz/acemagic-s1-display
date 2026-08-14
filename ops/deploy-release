@@ -89,8 +89,23 @@ validate_tree_links "$staging"
 
 chown -R root:root "$staging"
 find "$staging" -type d -exec chmod 0755 {} +
-find "$staging" -type f ! -perm -0100 -exec chmod 0644 {} +
-find "$staging" -type f -perm -0100 -exec chmod 0755 {} +
+find "$staging" -type f -exec chmod 0644 {} +
+for executable in \
+    install \
+    ops/build-release \
+    ops/deploy-release \
+    ops/install-release \
+    ops/s1panel-memory-probe \
+    ops/setup-guest-memory-probe \
+    ops/setup-hardware-access \
+    ops/setup-network-hardening \
+    ops/setup-service \
+    ops/verify-designs-live \
+    s1panel/main.js \
+    s1panel/scripts/detect_devices.js; do
+    [ -f "$staging/$executable" ] || fail "Ausführbarer Helfer fehlt: $executable"
+    chmod 0755 "$staging/$executable"
+done
 
 (cd "$staging/s1panel" && node -e '
 for (const name of ["canvas", "express", "node-hid", "serialport", "winston"]) {

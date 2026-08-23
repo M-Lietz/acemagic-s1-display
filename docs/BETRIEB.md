@@ -119,6 +119,12 @@ Das Deployment entpackt zunächst in ein neues Verzeichnis unter
 erst dann den symbolischen Link `current` atomar um. Scheitern Dienst oder
 Healthcheck, wird der vorherige Link automatisch wiederhergestellt.
 
+Bei einem auf GitHub veröffentlichten Release prüft die native Action
+`.github/workflows/release.yml`, ob Tag und Projektversion zusammenpassen. Sie
+baut dasselbe Archiv erneut aus dem Tag und hängt Archiv und SHA-256-Datei an
+das Release. Dafür werden nur die zeitlich begrenzten Repository-Rechte von
+`github-actions[bot]` verwendet; zusätzliche Secrets sind nicht nötig.
+
 ## Abnahme und Rollback
 
 Eine Änderung am Instrument wird zuerst vollständig außerhalb des Live-

@@ -1,0 +1,58 @@
+name: Release assets
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Release-Quellstand auschecken
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Node.js einrichten
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            s1panel/package-lock.json
+            s1panel/gui/package-lock.json
+
+      - name: Native Build-Abhängigkeiten installieren
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            build-essential libudev-dev libusb-1.0-0-dev \
+            libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev
+
+      - name: Tag und Projektversion prüfen
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          version=$(node -p "require('./s1panel/package.json').version")
+          test "v$version" = "$RELEASE_TAG"
+
+      - name: Installationsarchiv bauen und prüfen
+        run: |
+          ./ops/build-release
+          version=$(node -p "require('./s1panel/package.json').version")
+          checksum="dist/acemagic-s1-display-$version.tar.gz.sha256"
+          test -f "$checksum"
+          (cd dist && sha256sum --check "$(basename "$checksum")")
+
+      - name: Archiv und Prüfsumme an Release anhängen
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          version=${RELEASE_TAG#v}
+          gh release upload "$RELEASE_TAG" \
+            "dist/acemagic-s1-display-$version.tar.gz" \
+            "dist/acemagic-s1-display-$version.tar.gz.sha256"

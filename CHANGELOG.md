@@ -9,6 +9,8 @@ orientiert sich an Keep a Changelog; Versionen folgen Semantic Versioning.
 
 ### Hinzugefügt
 
+- native GitHub-Automation, die beim veröffentlichten Release das geprüfte
+  Installationsarchiv und seine SHA-256-Datei direkt am Release bereitstellt
 - pixelgenaue RGB565-Tests für begrenzte Instrument-Teilaktualisierungen
 - getrennte, von Git ausgeschlossene Bewegungsvorschau für Kandidatentests
 - rollierende, geheimnisfreie Leistungswerte für Renderer und USB-Übertragung

@@ -207,3 +207,35 @@ test('rejects plain HTTP unless it is explicitly enabled', async () => {
         delete process.env[tokenEnv];
     }
 });
+
+test('retries one transient Proxmox connection reset', async t => {
+    const tokenEnv = 'S1PANEL_TEST_PVE_TOKEN_RETRY';
+    const previousToken = process.env[tokenEnv];
+    process.env[tokenEnv] = 'PVEAPIToken=test@pve!display=test-only-token';
+    let requests = 0;
+    const server = http.createServer((request, response) => {
+        requests++;
+        if (requests === 1) {
+            request.socket.destroy();
+            return;
+        }
+        response.writeHead(200, { 'content-type': 'application/json' });
+        response.end(JSON.stringify({ data: { version: 'test' } }));
+    });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    t.after(() => {
+        server.close();
+        if (previousToken === undefined) delete process.env[tokenEnv];
+        else process.env[tokenEnv] = previousToken;
+    });
+
+    const address = server.address();
+    const result = await sensor.requestJson({
+        pve_url: 'http://127.0.0.1:' + address.port,
+        token_env: tokenEnv,
+        allow_http: true
+    }, '/api2/json/version');
+
+    assert.deepEqual(result, { version: 'test' });
+    assert.equal(requests, 2);
+});

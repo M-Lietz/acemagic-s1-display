@@ -5,6 +5,8 @@ orientiert sich an Keep a Changelog; Versionen folgen Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-08-23
+
 ### Hinzugefügt
 
 - pixelgenaue RGB565-Tests für begrenzte Instrument-Teilaktualisierungen
@@ -91,5 +93,6 @@ orientiert sich an Keep a Changelog; Versionen folgen Semantic Versioning.
 - ungenutzte Upstream-Editor-, Sensor- und Widget-Bestandteile entfernt
 - Font-Nutzung und Cache-Verhalten vereinfacht
 
-[Unreleased]: https://github.com/M-Lietz/acemagic-s1-display/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/M-Lietz/acemagic-s1-display/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/M-Lietz/acemagic-s1-display/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/M-Lietz/acemagic-s1-display/releases/tag/v0.1.2

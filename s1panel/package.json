@@ -1,6 +1,6 @@
 {
   "name": "acemagic-s1-display",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "packageManager": "npm@11.17.0",
   "private": true,
   "description": "Native system dashboard for the AceMagic S1 LCD",

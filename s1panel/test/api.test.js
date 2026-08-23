@@ -47,6 +47,27 @@ test('reports version, license and upstream in the about endpoint', () => {
     assert.match(response.body.license_url, /\/blob\/main\/LICENSE$/);
 });
 
+test('reports renderer performance without exposing configuration', () => {
+    const routes = {};
+    const web = {
+        get(route, handler) { routes[`GET ${route}`] = handler; },
+        post(route, handler) { routes[`POST ${route}`] = handler; }
+    };
+    const expected = { window_ms: 30000, animation_fps: 4.5 };
+
+    api.init(web, {
+        config: { theme: 'themes/instrument/instrument.json' },
+        state: {
+            config_file: '/not/read',
+            performance: { snapshot: () => expected }
+        }
+    });
+
+    const response = responseRecorder();
+    routes['GET /api/performance']({}, response);
+    assert.deepEqual(response.body, expected);
+});
+
 test('activates a design only after the live renderer confirms a complete frame', async context => {
     const directory = await fs.promises.mkdtemp(path.join(os.tmpdir(), 's1panel-api-'));
     const configFile = path.join(directory, 'config.json');

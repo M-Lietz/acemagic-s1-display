@@ -11,6 +11,7 @@ const fixture = require('./fixtures/instrument_status.json');
 const {
     MAX_REPORT_DIMENSION,
     MAX_REPORT_PIXELS,
+    compactRegions,
     findDirtyRegions,
     planUpdates,
     splitRegion
@@ -49,7 +50,7 @@ test('returns no regions for identical frames and one tile for a single changed 
 
     current.data[17 * 32 + 18] = 42;
     assert.deepEqual(findDirtyRegions(previous, current, 32, 32), [
-        { x: 16, y: 16, width: 16, height: 16 }
+        { x: 16, y: 16, width: 8, height: 8 }
     ]);
 });
 
@@ -61,6 +62,20 @@ test('splits every update into valid HID refresh reports', () => {
         assert.ok(chunk.height <= MAX_REPORT_DIMENSION);
         assert.ok(chunk.width * chunk.height <= MAX_REPORT_PIXELS);
     }
+});
+
+test('compacts overlapping curved-motion tiles within the safe HID limit', () => {
+    const regions = compactRegions([
+        { x: 16, y: 32, width: 32, height: 16 },
+        { x: 32, y: 48, width: 32, height: 16 },
+        { x: 48, y: 48, width: 16, height: 16 }
+    ]);
+
+    assert.deepEqual(regions, [
+        { x: 16, y: 32, width: 32, height: 16 },
+        { x: 32, y: 48, width: 32, height: 16 }
+    ]);
+    assert.ok(regions.every(region => region.width * region.height <= MAX_REPORT_PIXELS));
 });
 
 test('falls back to a full redraw when partial updates would not save reports', () => {
@@ -136,4 +151,96 @@ test('physical RGB565 animation stays exact and below a full redraw', async () =
         previousContext.resetTransform();
         previousContext.putImageData(current, 0, 0);
     }
+});
+
+test('one marker animation step needs at most three small HID reports', async () => {
+    const width = 320;
+    const height = 170;
+    const canvas = createCanvas(width, height);
+    const context = canvas.getContext('2d', { pixelFormat: 'RGB16_565' });
+    let now = 30000;
+    const config = {
+        rect: { x: 0, y: 0, width: 170, height: 320 },
+        now: () => now
+    };
+
+    await drawPhysicalInstrument(context, fixture, config);
+    const changed = structuredClone(fixture);
+    changed.metrics.cpuPercent = 66;
+    changed.metrics.memoryPercent = 32;
+    await drawPhysicalInstrument(context, changed, config);
+    const previous = context.getImageData(0, 0, width, height);
+
+    now += 160;
+    await drawPhysicalInstrument(context, changed, config);
+    const current = context.getImageData(0, 0, width, height);
+    const plan = planUpdates(previous, current, width, height);
+    const pixels = plan.chunks.reduce((sum, rect) => sum + rect.width * rect.height, 0);
+
+    assert.equal(plan.type, 'update');
+    assert.ok(plan.chunks.length > 0);
+    assert.ok(plan.chunks.length <= 3);
+    assert.ok(pixels <= 2048);
+    assert.deepEqual(applyChunks(previous, current, width, height, plan.chunks), current.data);
+});
+
+test('one scanner step stays a small partial update', async () => {
+    const width = 320;
+    const height = 170;
+    const canvas = createCanvas(width, height);
+    const context = canvas.getContext('2d', { pixelFormat: 'RGB16_565' });
+    let now = 40000;
+    const config = {
+        rect: { x: 0, y: 0, width: 170, height: 320 },
+        now: () => now
+    };
+
+    await drawPhysicalInstrument(context, fixture, config);
+    const previous = context.getImageData(0, 0, width, height);
+
+    now += 100;
+    await drawPhysicalInstrument(context, fixture, config);
+    const current = context.getImageData(0, 0, width, height);
+    const plan = planUpdates(previous, current, width, height);
+    const pixels = plan.chunks.reduce((sum, rect) => sum + rect.width * rect.height, 0);
+
+    assert.equal(plan.type, 'update');
+    assert.ok(plan.chunks.length > 0);
+    assert.ok(plan.chunks.length <= 4);
+    assert.ok(pixels <= 3072);
+    assert.deepEqual(applyChunks(previous, current, width, height, plan.chunks), current.data);
+});
+
+test('a complete scanner cycle stays close to one HID report per visible frame', async () => {
+    const width = 320;
+    const height = 170;
+    const canvas = createCanvas(width, height);
+    const context = canvas.getContext('2d', { pixelFormat: 'RGB16_565' });
+    let now = 50000;
+    const config = {
+        rect: { x: 0, y: 0, width: 170, height: 320 },
+        now: () => now
+    };
+    const reports = [];
+
+    await drawPhysicalInstrument(context, fixture, config);
+    let previous = context.getImageData(0, 0, width, height);
+    for (let frameIndex = 0; frameIndex < 69; frameIndex++) {
+        now += 100;
+        await drawPhysicalInstrument(context, fixture, config);
+        const current = context.getImageData(0, 0, width, height);
+        const plan = planUpdates(previous, current, width, height);
+        if (plan.chunks.length) {
+            assert.equal(plan.type, 'update');
+            reports.push(plan.chunks.length);
+            assert.deepEqual(applyChunks(previous, current, width, height, plan.chunks), current.data);
+        }
+        previous = current;
+    }
+
+    const average = reports.reduce((sum, count) => sum + count, 0) / reports.length;
+    assert.ok(reports.length >= 55);
+    const maximum = Math.max(...reports);
+    assert.ok(maximum <= 3, `maximum=${maximum}, average=${average.toFixed(2)}, reports=${reports.join(',')}`);
+    assert.ok(average <= 1.35, `average=${average.toFixed(2)}`);
 });

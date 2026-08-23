@@ -69,6 +69,12 @@ module.exports.init = function(web, context) {
         }
     });
 
+    web.get('/api/performance', (request, response) => {
+        response.json(context.state.performance
+            ? context.state.performance.snapshot()
+            : { status: 'unavailable' });
+    });
+
     web.get('/api/designs', async (request, response) => {
         try {
             const catalog = await designCatalog.loadCatalog(catalogFile);

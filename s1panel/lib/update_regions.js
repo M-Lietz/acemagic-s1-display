@@ -2,8 +2,12 @@
 /* Copyright (c) 2026 Merlin Lietz and contributors
  * SPDX-License-Identifier: GPL-3.0-only */
 
-const DEFAULT_TILE_SIZE = 16;
-const MAX_REPORT_PIXELS = 2048;
+const DEFAULT_TILE_SIZE = 8;
+// Der HID-Puffer kann theoretisch 2048 RGB565-Pixel aufnehmen. Die Firmware
+// des echten AceMagic S1 quittiert derart volle Refresh-Pakete jedoch
+// sporadisch mit einem Fehler. 1024 Pixel sind auf der Hardware stabil und
+// lassen noch genug Reserve fuer Header und Firmware-Verarbeitung.
+const MAX_REPORT_PIXELS = 1024;
 const MAX_REPORT_DIMENSION = 255;
 const FULL_REDRAW_CHUNKS = 27;
 
@@ -132,8 +136,42 @@ function splitRegion(rect, options = {}) {
     return chunks;
 }
 
+function boundingRect(first, second) {
+    const x = Math.min(first.x, second.x);
+    const y = Math.min(first.y, second.y);
+    return {
+        x,
+        y,
+        width: Math.max(first.x + first.width, second.x + second.width) - x,
+        height: Math.max(first.y + first.height, second.y + second.height) - y
+    };
+}
+
+function compactRegions(regions, options = {}) {
+    const maxPixels = Math.max(1, Number(options.maxPixels) || MAX_REPORT_PIXELS);
+    const maxDimension = Math.max(1, Number(options.maxDimension) || MAX_REPORT_DIMENSION);
+    const compacted = regions.map(region => ({ ...region }));
+
+    while (compacted.length > 1) {
+        let best = null;
+        for (let first = 0; first < compacted.length - 1; first++) {
+            for (let second = first + 1; second < compacted.length; second++) {
+                const merged = boundingRect(compacted[first], compacted[second]);
+                const pixels = merged.width * merged.height;
+                if (merged.width > maxDimension || merged.height > maxDimension || pixels > maxPixels) continue;
+                if (!best || pixels < best.pixels) best = { first, second, merged, pixels };
+            }
+        }
+        if (!best) break;
+        compacted[best.first] = best.merged;
+        compacted.splice(best.second, 1);
+    }
+
+    return compacted.sort((first, second) => first.y - second.y || first.x - second.x);
+}
+
 function planUpdates(previousImage, currentImage, width, height, options = {}) {
-    const regions = findDirtyRegions(previousImage, currentImage, width, height, options);
+    const regions = compactRegions(findDirtyRegions(previousImage, currentImage, width, height, options), options);
     const chunks = regions.flatMap(region => splitRegion(region, options));
     const redrawAt = Math.max(1, Number(options.redrawAt) || FULL_REDRAW_CHUNKS);
 
@@ -149,6 +187,7 @@ module.exports = {
     MAX_REPORT_PIXELS,
     MAX_REPORT_DIMENSION,
     FULL_REDRAW_CHUNKS,
+    compactRegions,
     findDirtyRegions,
     splitRegion,
     planUpdates

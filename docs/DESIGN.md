@@ -37,11 +37,21 @@ im [Designkatalog](DESIGNKATALOG.md) sowie in der
 Die Ansicht nutzt bewusst nur einen Screen. Das vermeidet unnötige Rotation,
 reduziert Zustandslogik und macht alle zentralen Werte sofort sichtbar.
 
-CPU und RAM bewegen sich bei einer Wertänderung zeitbasiert mit schnellem
-Ansprechen und sanftem Auslaufen auf ihr neues Ziel. Die kurze Animation läuft
-mit kontrollierten Zwischenbildern, während die Messquelle weiterhin nur alle
-fünf Sekunden abgefragt wird. Im Stillstand werden keine unnötigen Displaybilder
-übertragen.
+Zahlen und Zusatzwerte stehen bei einer Messwertänderung sofort korrekt. Der
+gefüllte Bogen läuft anschließend zusammen mit seinem hellen Zeiger gleichmäßig
+zum neuen Ziel. CPU und RAM bewegen sich bewusst nacheinander, sodass das
+langsame USB-Display immer nur einen kleinen Bogenabschnitt übertragen muss.
+Bei einem sichtbaren Sprung ab sechs Prozentpunkten läuft der Bogen leicht über
+das Ziel und federt in 360 ms auf den exakten Wert zurück. Kleine Schwankungen
+bleiben direkt. Die Messquelle wird weiterhin nur alle fünf Sekunden abgefragt.
+
+Zwischen Messwertbewegungen wandert ein breiter, weich leuchtender Scanner
+direkt über die Skala. Ein vollständiger Hin-und-zurück-Lauf dauert etwa sechs
+Sekunden. Nach einer kurzen echten Firmwarepause wechselt die Bewegung vom
+CPU- zum RAM-Bogen. Während einer realen Messwertbewegung hält der Scanner
+seine Position, damit nie zwei konkurrierende Bewegungen übertragen werden.
+Status und Sparkline bleiben bewusst ruhig; so ist die Bewegung klar sichtbar,
+ohne den hochwertigen Instrumentencharakter in einen Neon-Look zu verwandeln.
 
 Eine geglättete Linie unter dem Hauptwert zeigt jeweils die letzten fünf Minuten.
 Ihre Skala hat eine Mindestspanne von 24 Prozentpunkten. Kleine Messschwankungen

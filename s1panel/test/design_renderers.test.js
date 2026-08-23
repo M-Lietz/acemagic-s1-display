@@ -55,7 +55,7 @@ test('instrument uses pixel diffs while all other designs keep atomic redraw tra
     for (const design of catalog.designs) {
         const theme = JSON.parse(await fs.promises.readFile(path.join(appDir, design.theme)));
         assert.equal(theme.refresh, design.id === 'instrument' ? 'diff' : 'redraw', design.id);
-        if (design.id === 'instrument') assert.equal(theme.frame_interval_ms, 160);
+        if (design.id === 'instrument') assert.equal(theme.frame_interval_ms, 100);
         assert.deepEqual(theme.screens[0].widgets[0].rect,
             { x: 0, y: 0, width: 170, height: 320 }, design.id);
     }

@@ -59,6 +59,9 @@ Release geladen.
   wie bei einem Vollbild nötig, fällt der Renderer ebenfalls automatisch auf
   den bewährten Vollbildweg zurück. Alle anderen Designs behalten diesen
   bisherigen Vollbildweg unverändert bei.
+- Mehrere gleichzeitige Redraw-Anforderungen werden auf den aktuellen und
+  höchstens einen folgenden Frame begrenzt. Ein fehlgeschlagener Vollbildversuch
+  bleibt damit genau einmal offen und erzeugt keinen wachsenden Rückstand.
 - Ein lokaler `/healthz`-Endpunkt und der systemd-Watchdog überwachen, ob LCD,
   Renderer und Hauptprozess tatsächlich aktiv bleiben.
 - Die Gallery liest ausschließlich den versionierten Designkatalog. Eine
@@ -73,6 +76,8 @@ Release geladen.
 - Ein Token wird nie in Theme, Konfiguration, Testfixture oder Log geschrieben.
 - HTTPS-Zertifikate werden geprüft; eine interne CA kann über `ca_file`
   angegeben werden.
+- Ein Verbindungsreset oder Timeout der lesenden Proxmox-Abfrage wird genau
+  einmal nach kurzer Pause wiederholt. Andere Fehler werden nicht verdeckt.
 - HTTP ist nur für automatisierte lokale Tests ausdrücklich freigegeben.
 - Die Web-UI bindet im Beispiel nur an `127.0.0.1`.
 - Der Healthcheck bindet zusammen mit der Web-UI ausschließlich an Loopback.

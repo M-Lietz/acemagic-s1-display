@@ -18,6 +18,9 @@ const START_COOL_DOWN = 1000;
 const POLL_TIMEOUT = 10;
 const RECONNECT_DELAY = 3000;
 const ERROR_LOG_INTERVAL = 30000;
+const UPDATE_RETRY_DELAY = 80;
+const UPDATE_RETRIES = 2;
+const UPDATE_REPORT_PAUSE = 15;
 
 // my hid throws way too many of these errors, hide them by default!
 const DEBUG_TRACE = false;
@@ -28,18 +31,66 @@ function get_hr_time() {
 }
 
 function start_lcd_redraw(handle, state, job) {
-    return lcd.redraw(handle, job.image).then(() => ({ type: 'redraw', complete: true }));
+    const startedAt = get_hr_time();
+    return lcd.redraw(handle, job.image).then(() => ({
+        type: 'redraw',
+        complete: true,
+        durationMs: get_hr_time() - startedAt,
+        reports: 27,
+        pixels: job.image.data.length
+    }));
 }
 
-function start_lcd_update(handle, state, job, fulfill, reject) {
+function delay(milliseconds) {
+    return new Promise(fulfill => setTimeout(fulfill, milliseconds));
+}
+
+function write_lcd_update(handle, job, attempt = 0) {
+    return lcd.refresh(handle, job.rect.x, job.rect.y, job.rect.width, job.rect.height, job.image)
+        .then(() => attempt + 1, error => {
+            if (attempt >= UPDATE_RETRIES) throw error;
+            return delay(UPDATE_RETRY_DELAY).then(() => write_lcd_update(handle, job, attempt + 1));
+        });
+}
+
+function start_lcd_update(handle, state, job, fulfill, reject, stats) {
+
+    const transfer = stats || { startedAt: get_hr_time(), reports: 0, pixels: 0 };
 
     if (job && 'update' === job.type) {
-    
-        return lcd.refresh(handle, job.rect.x, job.rect.y, job.rect.width, job.rect.height, job.image)
-            .then(() => start_lcd_update(handle, state, state.queue.shift(), fulfill, reject), reject);
+        return write_lcd_update(handle, job).then(attempts => {
+            transfer.reports += attempts;
+            transfer.pixels += attempts * job.rect.width * job.rect.height;
+
+            if (state.queue[0]?.type === 'update') {
+                const next = state.queue.shift();
+                return delay(UPDATE_REPORT_PAUSE).then(() => start_lcd_update(
+                    handle,
+                    state,
+                    next,
+                    fulfill,
+                    reject,
+                    transfer
+                ));
+            }
+
+            return fulfill({
+                type: 'update',
+                complete: true,
+                durationMs: get_hr_time() - transfer.startedAt,
+                reports: transfer.reports,
+                pixels: transfer.pixels
+            });
+        }, reject);
     }
 
-    return fulfill({ type: 'update', complete: true });
+    return fulfill({
+        type: 'update',
+        complete: true,
+        durationMs: get_hr_time() - transfer.startedAt,
+        reports: transfer.reports,
+        pixels: transfer.pixels
+    });
 }
 
 function start_lcd_heartbeat(handle, state, job, fulfill, reject) {
@@ -195,7 +246,13 @@ function refresh_device(handle, state) {
             else {
 
                 // upcall we're ready to receive next command...
-                threads.parentPort.postMessage({ type: rc.type, complete: rc.complete });
+                threads.parentPort.postMessage({
+                    type: rc.type,
+                    complete: rc.complete,
+                    durationMs: rc.durationMs,
+                    reports: rc.reports,
+                    pixels: rc.pixels
+                });
             }
 
             state.last_type = rc.type;
@@ -230,9 +287,9 @@ function message_handler(state, message) {
             break;
             
         case 'redraw':
-            if (!state.connected) {
-                state.queue = state.queue.filter(job => job.type !== 'redraw' && job.type !== 'update');
-            }
+            // Ein Vollbild ist der neue verbindliche Zustand. Aeltere Teilbilder
+            // duerfen danach nicht mehr auf das Display geschrieben werden.
+            state.queue = state.queue.filter(job => job.type !== 'redraw' && job.type !== 'update');
             state.queue.push({ type: 'redraw', image: { data: message.pixelData } });
             break;
 

@@ -19,6 +19,8 @@ const logger      = require('./logger');
 const api         = require('./api');
 const webSecurity = require('./lib/web_security');
 const updateRegions = require('./lib/update_regions');
+const redrawTracker = require('./lib/redraw_tracker');
+const { PerformanceMonitor } = require('./lib/performance_monitor');
 
 const app_dir = __dirname;
 const config_dir = process.env.S1PANEL_CONFIG || app_dir;
@@ -31,6 +33,7 @@ function get_hr_time() {
 function lcd_redraw(state, imageData) {
 
     state.drawing = true;
+    redrawTracker.start(state.redraw);
 
     const pixelData = new Uint16Array(imageData.data);
 
@@ -161,6 +164,8 @@ function clear_pending_screen_updates(state) {
 function update_device_screen(context, state, config, theme) {
 
     return new Promise(fulfill => {
+
+        state.performance.recordCycle(state.drawing);
 
         if (state.update_orientation) {
 
@@ -817,6 +822,7 @@ function lcd_thread_status(state, theme, message) {
         state.lcd_connected = message.connected === true;
         state.lcd_last_activity = Date.now();
         state.drawing = false;
+        redrawTracker.fail(state.redraw);
         if (state.lcd_connected) {
             state.update_orientation = true;
             state.force_redraw(state);
@@ -830,14 +836,20 @@ function lcd_thread_status(state, theme, message) {
     }
 
     if (message.type === 'operation_error') {
+        state.performance.recordError(message.operation);
         state.drawing = false;
-        if (message.operation === 'redraw' || message.operation === 'update') {
+        if (message.operation === 'redraw') {
+            redrawTracker.fail(state.redraw);
+        }
+        else if (message.operation === 'update') {
             state.force_redraw(state);
         }
         return;
     }
 
     if (state.drawing && message.complete) {
+
+        state.performance.recordTransfer(message);
 
         if ('redraw' === message.type) {
 
@@ -889,12 +901,12 @@ function main() {
                     widgets            : {},
                     sensors            : {},
 
-                    redraw_want        : 1,
-                    redraw_count       : 0,
+                    redraw             : redrawTracker.create(),
 
                     drawing            : false,             // drawing in progress
                     lcd_connected      : false,
                     lcd_last_activity  : Date.now(),
+                    performance        : new PerformanceMonitor(),
                     theme_activation   : null,
                     changes            : [],                // screen update regions
                     change_count       : 0,                 // screen update count
@@ -921,9 +933,9 @@ function main() {
                     unsaved_changes    : false,
 
                     // helpers to keep things consistant between here and api
-                    pending_redraw     : (state) => state.redraw_count < state.redraw_want,
-                    force_redraw       : (state) => state.redraw_want++,
-                    done_redraw        : (state) => state.redraw_count < state.redraw_want ? state.redraw_count++ : state.redraw_count
+                    pending_redraw     : (state) => redrawTracker.pending(state.redraw),
+                    force_redraw       : (state) => redrawTracker.request(state.redraw),
+                    done_redraw        : (state) => redrawTracker.complete(state.redraw)
                 };
 
                 initialize(_state, config, theme).then(() => {

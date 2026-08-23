@@ -46,9 +46,9 @@ async function main() {
             value
         }));
 
-        for (let frame = 0; frame < 24; frame++) {
-            if (frame >= 4) now += 125;
-            await dashboard.draw(context, frame < 4 ? start : target, 0, 0, config);
+        for (let frame = 0; frame < 96; frame++) {
+            if (frame > 0) now += 125;
+            await dashboard.draw(context, frame < 32 ? start : target, 0, 0, config);
             const filename = path.join(tempDirectory, `frame-${String(frame).padStart(2, '0')}.png`);
             fs.writeFileSync(filename, canvas.toBuffer('image/png'));
         }

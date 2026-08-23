@@ -41,7 +41,7 @@ function loadCa(config) {
     return fs.readFileSync(config.ca_file);
 }
 
-function requestJson(config, apiPath) {
+function requestJsonOnce(config, apiPath) {
     return new Promise((fulfill, reject) => {
         const baseUrl = resolvePveUrl(config);
         const token = resolveToken(config);
@@ -118,6 +118,22 @@ function requestJson(config, apiPath) {
         request.on('timeout', () => request.destroy(new Error('Proxmox-Anfrage hat das Zeitlimit erreicht')));
         request.on('error', reject);
     });
+}
+
+function transientRequestError(error) {
+    return ['ECONNRESET', 'EPIPE', 'ETIMEDOUT'].includes(error?.code)
+        || /socket hang up|Zeitlimit erreicht/i.test(String(error?.message || error));
+}
+
+async function requestJson(config, apiPath) {
+    try {
+        return await requestJsonOnce(config, apiPath);
+    }
+    catch (error) {
+        if (!transientRequestError(error)) throw error;
+        await new Promise(resolve => setTimeout(resolve, 120));
+        return requestJsonOnce(config, apiPath);
+    }
 }
 
 function discoverPackageTemperature() {

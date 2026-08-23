@@ -9,6 +9,10 @@ orientiert sich an Keep a Changelog; Versionen folgen Semantic Versioning.
 
 - pixelgenaue RGB565-Tests für begrenzte Instrument-Teilaktualisierungen
 - getrennte, von Git ausgeschlossene Bewegungsvorschau für Kandidatentests
+- rollierende, geheimnisfreie Leistungswerte für Renderer und USB-Übertragung
+  unter `/api/performance`
+- gut sichtbare Living-Motion für Instrument: ein breiter, weich leuchtender
+  Scanner wandert direkt über CPU- und RAM-Bogen
 
 ### Geändert
 
@@ -18,6 +22,25 @@ orientiert sich an Keep a Changelog; Versionen folgen Semantic Versioning.
   Wartungshelfer nach dem sicheren Entpacken gezielt wieder her
 - Instrument überträgt animierte Änderungen per vorhandenem `LCD_REFRESH`;
   Start, Neuverbindung, Fehler und große Änderungen bleiben Vollbilder
+- CPU- und RAM-Bogen laufen nacheinander mit ihrem Zeiger; Zahlen stehen sofort
+  auf dem neuen Messwert und pro Animationsschritt ändern sich nur kleine Bereiche
+- deutliche Lastsprünge federn leicht zum echten Zielwert zurück; kleine
+  Alltagsschwankungen bleiben direkt und ressourcenschonend
+- Messwert- und Scanner-Bewegung konkurrieren nicht: Bei einer echten
+  Messwertänderung hält der Scanner seine Position; nach einem vollständigen
+  Hin-und-zurück-Lauf folgt eine kurze Firmwarepause und der andere Bogen
+- Teilbildbereiche werden mit feinen 8-Pixel-Kacheln erkannt, innerhalb der
+  auf echter S1-Hardware stabilen Paketgröße zusammengefasst und pixelgenau
+  geprüft
+- fehlgeschlagene Teilbilder werden nach kurzer Pause begrenzt wiederholt;
+  ein nötiges Vollbild verwirft veraltete Bildaufträge statt sie nachträglich
+  abzuarbeiten
+- der Instrument-Bildtakt wurde für kleine Teilbilder von 160 auf 100 ms
+  verkürzt; laufende USB-Übertragungen werden weiterhin sicher übersprungen
+- wiederholte Redraw-Anforderungen werden zusammengefasst, damit einzelne
+  HID-Fehler keinen wachsenden Vollbild-Rückstand erzeugen
+- ein flüchtiger Proxmox-Verbindungsabbruch wird genau einmal kurz wiederholt,
+  bevor der Sensor den Host als nicht erreichbar meldet
 - alle zwölf weiteren Designs behalten ihren bisherigen Vollbildweg unverändert
 
 ## [0.1.2] - 2026-08-13

@@ -17,14 +17,16 @@ const BASE_WIDTH = 170;
 const BASE_HEIGHT = 320;
 const HISTORY_WINDOW_MS = 5 * 60 * 1000;
 const HISTORY_SAMPLE_MS = 5000;
-const MOTION_MIN_MS = 850;
-const MOTION_MAX_MS = 1350;
-const MOTION_FIELDS = Object.freeze([
+const MOTION_MIN_MS = 650;
+const MOTION_MAX_MS = 950;
+const MOTION_SETTLE_MS = 260;
+const MOTION_VISIBLE_MIN_DELTA = 3;
+const MOTION_OVERSHOOT_MIN_DELTA = 10;
+const SCANNER_ACTIVE_MS = 6000;
+const SCANNER_REST_MS = 900;
+const MARKER_FIELDS = Object.freeze([
     'cpuPercent',
-    'cpuTempC',
-    'memoryPercent',
-    'memoryUsedGb',
-    'storagePercent'
+    'memoryPercent'
 ]);
 
 const COLORS = Object.freeze({
@@ -53,7 +55,9 @@ function getPrivate(config) {
         config._private = {
             lastMetrics: null,
             displayedMetrics: null,
-            animation: null,
+            markerMetrics: null,
+            markerAnimation: null,
+            scannerAnimation: null,
             lastHistoryAt: 0,
             history: { cpu: [], memory: [] }
         };
@@ -220,10 +224,48 @@ function gaugeColor(percent, temperature) {
     };
 }
 
-function drawGaugeArc(context, centerX, centerY, radius, percent, temperature) {
+function drawGaugeMarker(context, centerX, centerY, radius, percent, temperature) {
     const startAngle = Math.PI * 0.75;
     const span = Math.PI * 1.5;
     const normalized = Math.max(0, Math.min(100, percent)) / 100;
+    const angle = startAngle + span * normalized;
+    const innerRadius = radius - 7;
+    const outerRadius = radius + 6;
+    const color = gaugeColor(percent, temperature);
+
+    context.save();
+    context.strokeStyle = color.start;
+    context.lineCap = 'round';
+    context.lineWidth = 9;
+    context.shadowColor = color.glow;
+    context.shadowBlur = 3;
+    context.beginPath();
+    context.arc(centerX, centerY, radius, angle - 0.07, angle + 0.07);
+    context.stroke();
+
+    context.strokeStyle = '#d9f7ff';
+    context.fillStyle = color.start;
+    context.lineWidth = 1.35;
+    context.beginPath();
+    context.moveTo(centerX + Math.cos(angle) * innerRadius, centerY + Math.sin(angle) * innerRadius);
+    context.lineTo(centerX + Math.cos(angle) * outerRadius, centerY + Math.sin(angle) * outerRadius);
+    context.stroke();
+    context.beginPath();
+    context.arc(
+        centerX + Math.cos(angle) * radius,
+        centerY + Math.sin(angle) * radius,
+        1.7,
+        0,
+        Math.PI * 2
+    );
+    context.fill();
+    context.restore();
+}
+
+function drawGaugeArc(context, centerX, centerY, radius, percent, temperature, markerPercent = percent, glint = null) {
+    const startAngle = Math.PI * 0.75;
+    const span = Math.PI * 1.5;
+    const normalized = Math.max(0, Math.min(100, markerPercent)) / 100;
 
     const track = context.createLinearGradient(centerX - radius, centerY, centerX + radius, centerY);
     track.addColorStop(0, COLORS.trackStart);
@@ -263,16 +305,6 @@ function drawGaugeArc(context, centerX, centerY, radius, percent, temperature) {
         context.beginPath();
         context.arc(centerX, centerY, radius - 4.3, startAngle, startAngle + span * normalized);
         context.stroke();
-
-        const leadingAngle = startAngle + span * normalized;
-        const leadingX = centerX + Math.cos(leadingAngle) * radius;
-        const leadingY = centerY + Math.sin(leadingAngle) * radius;
-        context.fillStyle = color.start;
-        context.shadowColor = color.glow;
-        context.shadowBlur = 3;
-        context.beginPath();
-        context.arc(leadingX, leadingY, 1.5, 0, Math.PI * 2);
-        context.fill();
     }
 
     context.shadowBlur = 0;
@@ -281,9 +313,31 @@ function drawGaugeArc(context, centerX, centerY, radius, percent, temperature) {
     context.beginPath();
     context.arc(centerX, centerY, radius - 5.5, startAngle, startAngle + span);
     context.stroke();
+
+    if (glint && glint.intensity > 0) {
+        const glintAngle = startAngle + span * glint.progress;
+        const halfWidth = 0.16;
+        context.strokeStyle = `rgba(105, 204, 235, ${0.1 + glint.intensity * 0.16})`;
+        context.lineWidth = 8;
+        context.lineCap = 'round';
+        context.shadowColor = 'rgba(68, 192, 226, 0.4)';
+        context.shadowBlur = 2;
+        context.beginPath();
+        context.arc(centerX, centerY, radius, glintAngle - halfWidth, glintAngle + halfWidth);
+        context.stroke();
+
+        context.strokeStyle = `rgba(224, 245, 250, ${0.58 + glint.intensity * 0.28})`;
+        context.lineWidth = 2.4;
+        context.shadowColor = 'rgba(151, 225, 244, 0.72)';
+        context.shadowBlur = 3;
+        context.beginPath();
+        context.arc(centerX, centerY, radius - 1, glintAngle - 0.11, glintAngle + 0.11);
+        context.stroke();
+    }
     context.restore();
 
     drawTicks(context, centerX, centerY, radius, startAngle, span);
+    drawGaugeMarker(context, centerX, centerY, radius, markerPercent, temperature);
 }
 
 function drawSparkline(context, points, centerY) {
@@ -426,7 +480,16 @@ function drawInformationBadge(context, centerY, options) {
 }
 
 function drawGauge(context, options) {
-    drawGaugeArc(context, 85, options.centerY, 46, options.percent, options.temperature);
+    drawGaugeArc(
+        context,
+        85,
+        options.centerY,
+        46,
+        options.percent,
+        options.temperature,
+        options.markerPercent,
+        options.glint
+    );
 
     context.textAlign = 'center';
     context.textBaseline = 'middle';
@@ -583,23 +646,27 @@ function connectionStatus(metrics) {
     return metrics.healthLevel;
 }
 
-function render(context, metrics, history = { cpu: [], memory: [] }) {
+function render(context, metrics, history = { cpu: [], memory: [] }, markers = metrics, motion = {}) {
     drawBackground(context);
     drawHeader(context, connectionStatus(metrics));
     drawGauge(context, {
         centerY: 91,
         label: 'CPU LOAD',
         percent: metrics.cpuPercent,
+        markerPercent: markers.cpuPercent,
         temperature: metrics.cpuTempC,
-        history: history.cpu
+        history: history.cpu,
+        glint: motion.cpuGlint
     });
     drawGauge(context, {
         centerY: 194,
         label: 'RAM ACTIVE',
         percent: metrics.memoryPercent,
+        markerPercent: markers.memoryPercent,
         secondary: metrics.memoryUsedGb,
         available: metrics.memoryMeasured,
-        history: history.memory
+        history: history.memory,
+        glint: motion.memoryGlint
     });
     drawStorage(context, metrics);
     drawFooter(context, metrics);
@@ -620,68 +687,172 @@ function recordHistory(privateState, metrics, now) {
     }
 }
 
-function easeOutCubic(progress) {
-    return 1 - Math.pow(1 - progress, 3);
-}
-
-function interpolateMetrics(from, target, progress) {
-    const displayed = { ...target };
-    const eased = easeOutCubic(Math.max(0, Math.min(1, progress)));
-    for (const field of MOTION_FIELDS) {
-        const start = Number(from[field]);
-        const end = Number(target[field]);
-        if (Number.isFinite(start) && Number.isFinite(end)) {
-            displayed[field] = start + (end - start) * eased;
-        }
-    }
-    return displayed;
+function interpolateValue(from, target, progress) {
+    const linear = Math.max(0, Math.min(1, progress));
+    return from + (target - from) * linear;
 }
 
 function animationDuration(from, target) {
-    const largestChange = MOTION_FIELDS.reduce((largest, field) => {
-        const difference = Math.abs(Number(target[field]) - Number(from[field]));
-        return Number.isFinite(difference) ? Math.max(largest, difference) : largest;
-    }, 0);
-    return Math.min(MOTION_MAX_MS, MOTION_MIN_MS + largestChange * 8);
+    return Math.min(MOTION_MAX_MS, MOTION_MIN_MS + Math.abs(target - from) * 5);
 }
 
-function animateMetrics(privateState, target, now, targetChanged) {
-    if (!privateState.displayedMetrics) {
-        privateState.displayedMetrics = { ...target };
-        return { metrics: privateState.displayedMetrics, animating: false };
+function clampPercent(value) {
+    return Math.max(0, Math.min(100, value));
+}
+
+function markerPhases(markerMetrics, targetMarkers) {
+    return MARKER_FIELDS.flatMap(field => {
+        const from = Number(markerMetrics[field]) || 0;
+        const target = Number(targetMarkers[field]) || 0;
+        const delta = target - from;
+        if (Math.abs(delta) < MOTION_VISIBLE_MIN_DELTA) return [];
+
+        if (Math.abs(delta) < MOTION_OVERSHOOT_MIN_DELTA) {
+            return [{
+                field,
+                from,
+                target,
+                duration: animationDuration(from, target),
+                kind: 'move'
+            }];
+        }
+
+        const overshootDistance = Math.min(2.4, Math.max(1.2, Math.abs(delta) * 0.12));
+        const overshoot = clampPercent(target + Math.sign(delta) * overshootDistance);
+        const move = {
+            field,
+            from,
+            target: overshoot,
+            duration: animationDuration(from, overshoot),
+            kind: 'move'
+        };
+        if (Math.abs(overshoot - target) < 0.2) {
+            move.target = target;
+            return [move];
+        }
+        return [move, {
+            field,
+            from: overshoot,
+            target,
+            duration: MOTION_SETTLE_MS,
+            kind: 'settle'
+        }];
+    });
+}
+
+function advanceMarkerAnimation(privateState, now) {
+    const animation = privateState.markerAnimation;
+    if (!animation) return { animating: false, settled: false };
+
+    const phase = animation.phases[animation.index];
+    const elapsed = now - animation.startedAt;
+    if (elapsed < phase.duration) {
+        privateState.markerMetrics[phase.field] = interpolateValue(
+            phase.from,
+            phase.target,
+            elapsed / phase.duration
+        );
+        return { animating: true, settled: false };
     }
 
+    privateState.markerMetrics[phase.field] = phase.target;
+    animation.index++;
+    if (animation.index < animation.phases.length) {
+        animation.startedAt = now;
+        return { animating: true, settled: false };
+    }
+
+    privateState.markerAnimation = null;
+    return { animating: false, settled: true };
+}
+
+function animateMarkers(privateState, target, now, targetChanged) {
+    const targetMarkers = Object.fromEntries(MARKER_FIELDS.map(field => [field, target[field]]));
+
+    if (!privateState.markerMetrics) {
+        privateState.displayedMetrics = { ...target };
+        privateState.markerMetrics = { ...targetMarkers };
+        return { metrics: privateState.displayedMetrics, markers: privateState.markerMetrics, animating: false };
+    }
+
+    privateState.displayedMetrics = { ...target };
+    const previousAnimation = advanceMarkerAnimation(privateState, now);
+
     if (targetChanged) {
-        const from = privateState.animation
-            ? interpolateMetrics(
-                privateState.animation.from,
-                privateState.animation.target,
-                (now - privateState.animation.startedAt) / privateState.animation.duration
-            )
-            : privateState.displayedMetrics;
-        privateState.animation = {
-            from,
-            target: { ...target },
+        const phases = markerPhases(privateState.markerMetrics, targetMarkers);
+        privateState.markerAnimation = phases.length ? {
+            phases,
+            index: 0,
             startedAt: now,
-            duration: animationDuration(from, target)
+        } : null;
+        if (!phases.length) privateState.markerMetrics = { ...targetMarkers };
+    }
+
+    if (!privateState.markerAnimation) {
+        return {
+            metrics: privateState.displayedMetrics,
+            markers: privateState.markerMetrics,
+            animating: false,
+            settled: previousAnimation.settled
         };
     }
 
-    if (!privateState.animation) return { metrics: privateState.displayedMetrics, animating: false };
+    return {
+        metrics: privateState.displayedMetrics,
+        markers: privateState.markerMetrics,
+        animating: true
+    };
+}
 
-    const progress = (now - privateState.animation.startedAt) / privateState.animation.duration;
-    if (progress >= 1) {
-        privateState.displayedMetrics = { ...privateState.animation.target };
-        privateState.animation = null;
-        return { metrics: privateState.displayedMetrics, animating: false, settled: true };
+function animateScanner(privateState, now, markerAnimating, enabled) {
+    if (!enabled) return { active: false, settled: false };
+    if (!privateState.scannerAnimation) {
+        privateState.scannerAnimation = {
+            gauge: 'cpu',
+            mode: 'active',
+            elapsed: 0,
+            lastAt: now,
+            progress: 0,
+            lastRenderedProgress: null
+        };
     }
 
-    privateState.displayedMetrics = interpolateMetrics(
-        privateState.animation.from,
-        privateState.animation.target,
-        progress
-    );
-    return { metrics: privateState.displayedMetrics, animating: true };
+    const scanner = privateState.scannerAnimation;
+    const delta = Math.max(0, Math.min(250, now - scanner.lastAt));
+    scanner.lastAt = now;
+    const currentGlint = () => ({ progress: scanner.progress, intensity: 1 });
+    const result = glint => ({
+        active: false,
+        settled: false,
+        cpuGlint: scanner.gauge === 'cpu' ? glint : null,
+        memoryGlint: scanner.gauge === 'memory' ? glint : null
+    });
+
+    if (markerAnimating) return result(currentGlint());
+
+    scanner.elapsed += delta;
+    if (scanner.mode === 'rest') {
+        if (scanner.elapsed < SCANNER_REST_MS) return result(null);
+        scanner.gauge = scanner.gauge === 'cpu' ? 'memory' : 'cpu';
+        scanner.mode = 'active';
+        scanner.elapsed = 0;
+        scanner.progress = 0;
+        scanner.lastRenderedProgress = null;
+    }
+
+    if (scanner.elapsed >= SCANNER_ACTIVE_MS) {
+        scanner.mode = 'rest';
+        scanner.elapsed = 0;
+        scanner.lastRenderedProgress = null;
+        return { ...result(null), settled: true };
+    }
+
+    const phase = scanner.elapsed / SCANNER_ACTIVE_MS;
+    scanner.progress = (1 - Math.cos(phase * Math.PI * 2)) / 2;
+    const changed = scanner.lastRenderedProgress === null
+        || Math.abs(scanner.progress - scanner.lastRenderedProgress) >= 0.0001;
+    scanner.lastRenderedProgress = scanner.progress;
+    return { ...result(currentGlint()), active: changed };
 }
 
 function draw(context, value, min, max, config) {
@@ -693,7 +864,8 @@ function draw(context, value, min, max, config) {
         privateState.lastMetrics = signature;
         const now = typeof config.now === 'function' ? config.now() : Date.now();
         recordHistory(privateState, metrics, now);
-        const animated = animateMetrics(privateState, metrics, now, changed);
+        const animated = animateMarkers(privateState, metrics, now, changed);
+        const scanner = animateScanner(privateState, now, animated.animating, config.ambientMotion !== false);
 
         const rect = config.rect;
         context.save();
@@ -702,10 +874,13 @@ function draw(context, value, min, max, config) {
         context.clip();
         context.translate(rect.x, rect.y);
         context.scale(rect.width / BASE_WIDTH, rect.height / BASE_HEIGHT);
-        render(context, animated.metrics, privateState.history);
+        render(context, animated.metrics, privateState.history, animated.markers, {
+            cpuGlint: scanner.cpuGlint,
+            memoryGlint: scanner.memoryGlint
+        });
         context.restore();
 
-        fulfill(changed || animated.animating || animated.settled === true);
+        fulfill(changed || animated.animating || animated.settled === true || scanner.active || scanner.settled);
     });
 }
 

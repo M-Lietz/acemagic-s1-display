@@ -149,6 +149,27 @@ journalctl -u s1panel --since '-10 minutes' --no-pager
 sudo ./ops/verify-designs-live
 ```
 
+Für eine kurze Leistungsdiagnose liefert `/api/performance` ausschließlich
+rollierende Renderer- und USB-Zähler der letzten 30 Sekunden. Enthalten sind
+tatsächlich abgeschlossene Animationsbilder, Übertragungsdauer, Teilbildanzahl
+und wegen einer laufenden USB-Übertragung ausgelassene Zyklen. Konfiguration,
+Gerätepfade und Zugangsdaten werden nicht ausgegeben.
+
+Auf dem Referenzgerät erreichte Instrument mit gefülltem Bogen und Zeiger etwa
+6,9 bis 7,0 tatsächlich übertragene Animationsbilder pro Sekunde. Das ist ein
+Messwert der getesteten Hardware und keine zugesicherte Rate für jedes Gerät.
+Mit dem gut sichtbaren Bogen-Scanner wurden in zwei getrennten ruhigen
+30-Sekunden-Fenstern 5,24 und 5,85 FPS bei durchschnittlich 1,7 bis 1,9
+Teilbild-Paketen gemessen. Es gab keine Vollbilder, Übertragungsfehler oder
+Dienstneustarts. Der Renderer nutzt feine 8-Pixel-Kacheln und begrenzt ein
+Teilbild auf den auf der Referenzhardware stabil geprüften Wert von 1024
+RGB565-Pixeln. Ein einzelner HID-Fehler wird nach einer kurzen Pause begrenzt
+wiederholt; erst ein endgültiger Fehler löst den sicheren Vollbildweg aus.
+
+```bash
+curl --fail http://127.0.0.1:8686/api/performance
+```
+
 `verify-designs-live` aktiviert alle 13 Designs nacheinander, verlangt einen
 bestätigten Vollbild-Frame und kontrolliert Healthcheck, PID und Journal. Bei
 einem Fehler wird `Instrument` wieder aktiviert.

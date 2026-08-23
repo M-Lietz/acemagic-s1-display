@@ -9,7 +9,7 @@
 > [Install in about 10 minutes](#installation-in-about-10-minutes) ·
 > [Design video](https://github.com/M-Lietz/acemagic-s1-display/releases/download/v0.1.2/acemagic-s1-design-showcase.mp4) ·
 > [Online/offline video](https://github.com/M-Lietz/acemagic-s1-display/releases/download/v0.1.2/acemagic-s1-status-demo.mp4) ·
-> [Release v0.1.2](https://github.com/M-Lietz/acemagic-s1-display/releases/tag/v0.1.2)
+> [Release v0.1.3](https://github.com/M-Lietz/acemagic-s1-display/releases/tag/v0.1.3)
 
 Ein natives 170×320-Systemdisplay für den **AceMagic S1**. Dreizehn
 unterschiedliche Ansichten zeigen den Zustand eines Proxmox-Homelabs ruhig,
@@ -96,8 +96,8 @@ Download the tested release archive and its checksum, verify both, then run the
 guided installer:
 
 ```bash
-release=acemagic-s1-display-0.1.2
-base=https://github.com/M-Lietz/acemagic-s1-display/releases/download/v0.1.2
+release=acemagic-s1-display-0.1.3
+base=https://github.com/M-Lietz/acemagic-s1-display/releases/download/v0.1.3
 
 mkdir -p acemagic-s1-install
 cd acemagic-s1-install

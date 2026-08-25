@@ -37,8 +37,13 @@ Release geladen.
 - Der Sensor hält bei einem kurzen Ausfall die letzte Antwort vor und markiert
   die Verbindung als unterbrochen.
 - Eine zentrale Healthbewertung priorisiert kritischen Storage-, Temperatur-,
-  RAM-, Swap- und Backupzustand vor Warnungen zu alten Backups, fehlenden
-  Messwerten oder gestoppten Gästen.
+  RAM- und Backupzustand vor Warnungen zu alten Backups, fehlenden Messwerten
+  oder gestoppten Gästen. Eine bloße alte Swap-Belegung gilt nicht als Fehler:
+  `RAM PRESSURE` entsteht erst bei gleichzeitig knappem Host-RAM und deutlich
+  belegtem Swap; sehr knapper RAM oder nahezu voller Swap bleibt kritisch.
+- Drei aufeinanderfolgende schlechte Messungen aktivieren einen Warnzustand,
+  zwei aufeinanderfolgende gute Messungen lösen ihn wieder. Kurze Spitzen
+  lassen die Statusplakette dadurch nicht flackern.
 - Die Gastliste wird ohne feste VMID dynamisch gelesen. Für VM und CT werden
   jeweils laufende und insgesamt vorhandene Instanzen gezählt; Templates zählen
   nicht als offline.

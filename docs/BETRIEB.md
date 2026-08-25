@@ -60,6 +60,14 @@ Abhängigkeiten entstehen ausschließlich in den ignorierten
 4. Eine interne CA als `/etc/s1panel/pve-root-ca.pem` ablegen oder in der
    Konfiguration auf den passenden CA-Pfad verweisen. TLS-Prüfung bleibt aktiv.
 
+Die Standardwerte bewerten Swap nicht isoliert. `RAM PRESSURE` erscheint erst,
+wenn weniger als 15 Prozent Host-RAM verfügbar und zugleich mindestens
+25 Prozent Swap belegt sind. Unter 5 Prozent verfügbarem Host-RAM oder ab
+75 Prozent Swap wird der Zustand kritisch. Drei schlechte Messungen aktivieren
+die Warnung; zwei gute Messungen stellen `ONLINE` wieder her. Diese Grenzen sind
+über `memory_pressure_*`, `swap_pressure_*`, `health_warning_samples` und
+`health_recovery_samples` in der Sensorkonfiguration anpassbar.
+
 Die Gallery und `/healthz` binden standardmäßig nur an `127.0.0.1:8686`.
 Zugriff erfolgt per SSH-Tunnel:
 

@@ -79,6 +79,7 @@ test('collects existing Proxmox metrics without an intermediate service', async 
         node: 'pve',
         storage: 'local-lvm',
         temperature_path: '/does/not/exist',
+        health_warning_samples: 1,
         allow_http: true
     };
     sensor.init(config);
@@ -92,6 +93,8 @@ test('collects existing Proxmox metrics without an intermediate service', async 
         cpuTempC: 0,
         memoryTotalGb: 16,
         memoryAvailableGb: 4,
+        hostMemoryAvailableGb: 4,
+        hostMemoryAvailablePercent: 25,
         memoryMeasured: true,
         memoryMode: 'host-occupied',
         storagePercent: 9.4,
@@ -132,6 +135,7 @@ test('prioritizes critical health conditions over warnings', () => {
         storagePercent: 96,
         cpuTempC: 50,
         memoryPercent: 20,
+        hostMemoryAvailablePercent: 30,
         swapPercent: 0,
         backupState: 'warning',
         backupMessage: 'BACKUP AGING',
@@ -141,6 +145,70 @@ test('prioritizes critical health conditions over warnings', () => {
         ctCount: 3,
         ctTotal: 3
     }), { level: 'critical', message: 'STORAGE CRITICAL' });
+});
+
+test('ignores old swap allocation while host memory remains available', () => {
+    assert.deepEqual(sensor.assessHealth({
+        storagePercent: 20,
+        cpuTempC: 50,
+        memoryPercent: 40,
+        hostMemoryAvailablePercent: 20,
+        swapPercent: 40,
+        backupState: 'ok',
+        memoryMeasured: true,
+        vmCount: 1,
+        vmTotal: 1,
+        ctCount: 3,
+        ctTotal: 3
+    }), { level: 'ok', message: 'ALL SYSTEMS HEALTHY' });
+});
+
+test('reports combined memory pressure and critical exhaustion', () => {
+    const base = {
+        storagePercent: 20,
+        cpuTempC: 50,
+        memoryPercent: 40,
+        backupState: 'ok',
+        memoryMeasured: true,
+        vmCount: 1,
+        vmTotal: 1,
+        ctCount: 3,
+        ctTotal: 3
+    };
+
+    assert.deepEqual(sensor.assessHealth({
+        ...base,
+        hostMemoryAvailablePercent: 10,
+        swapPercent: 30
+    }), { level: 'warning', message: 'RAM PRESSURE' });
+    assert.deepEqual(sensor.assessHealth({
+        ...base,
+        hostMemoryAvailablePercent: 4,
+        swapPercent: 0
+    }), { level: 'critical', message: 'RAM PRESSURE CRITICAL' });
+    assert.deepEqual(sensor.assessHealth({
+        ...base,
+        hostMemoryAvailablePercent: 30,
+        swapPercent: 75
+    }), { level: 'critical', message: 'RAM PRESSURE CRITICAL' });
+});
+
+test('stabilizes warnings over three bad and two healthy samples', () => {
+    const state = {
+        level: 'ok',
+        message: 'ALL SYSTEMS HEALTHY',
+        pendingLevel: '',
+        pendingMessage: '',
+        pendingCount: 0
+    };
+    const warning = { healthLevel: 'warning', healthMessage: 'RAM PRESSURE' };
+    const healthy = { healthLevel: 'ok', healthMessage: 'ALL SYSTEMS HEALTHY' };
+
+    assert.equal(sensor.stabilizeHealth(warning, state, 3, 2).healthLevel, 'ok');
+    assert.equal(sensor.stabilizeHealth(warning, state, 3, 2).healthLevel, 'ok');
+    assert.equal(sensor.stabilizeHealth(warning, state, 3, 2).healthLevel, 'warning');
+    assert.equal(sensor.stabilizeHealth(healthy, state, 3, 2).healthLevel, 'warning');
+    assert.equal(sensor.stabilizeHealth(healthy, state, 3, 2).healthLevel, 'ok');
 });
 
 test('parses Linux MemAvailable as reclaimable guest memory', () => {

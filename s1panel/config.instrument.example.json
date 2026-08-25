@@ -26,6 +26,12 @@
             "guest_probe_timeout_ms": 3000,
             "backup_warning_hours": 36,
             "backup_critical_hours": 72,
+            "memory_pressure_warning_available_percent": 15,
+            "memory_pressure_critical_available_percent": 5,
+            "swap_pressure_warning_percent": 25,
+            "swap_pressure_critical_percent": 75,
+            "health_warning_samples": 3,
+            "health_recovery_samples": 2,
             "guest_memory_probes": [
                {
                   "vmid": 100,

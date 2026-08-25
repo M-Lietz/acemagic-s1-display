@@ -5,6 +5,13 @@ orientiert sich an Keep a Changelog; Versionen folgen Semantic Versioning.
 
 ## [Unreleased]
 
+### Geändert
+
+- Swap-Belegung allein erzeugt keine Warnung mehr; erst kombinierter
+  Speicherdruck aus knappem Host-RAM und deutlich belegtem Swap wird gemeldet
+- Warn- und Erholungszustände werden über mehrere Messungen stabilisiert, damit
+  kurze Lastspitzen die Statusanzeige nicht flackern lassen
+
 ## [0.1.3] - 2026-08-23
 
 ### Hinzugefügt

@@ -18,6 +18,12 @@ const DEFAULT_TIMEOUT_MS = 3000;
 const DEFAULT_REFRESH_MS = 5000;
 const DEFAULT_BACKUP_WARNING_HOURS = 36;
 const DEFAULT_BACKUP_CRITICAL_HOURS = 72;
+const DEFAULT_MEMORY_PRESSURE_WARNING_AVAILABLE_PERCENT = 15;
+const DEFAULT_MEMORY_PRESSURE_CRITICAL_AVAILABLE_PERCENT = 5;
+const DEFAULT_SWAP_PRESSURE_WARNING_PERCENT = 25;
+const DEFAULT_SWAP_PRESSURE_CRITICAL_PERCENT = 75;
+const DEFAULT_HEALTH_WARNING_SAMPLES = 3;
+const DEFAULT_HEALTH_RECOVERY_SAMPLES = 2;
 const GIBIBYTE = 1024 ** 3;
 const KIBIBYTE = 1024;
 const HOUR_SECONDS = 3600;
@@ -316,20 +322,60 @@ function analyzeBackupTasks(tasks, nowSeconds, warningHours, criticalHours) {
     return { state: 'ok', ageHours, message: 'BACKUP OK' };
 }
 
-function assessHealth(metrics) {
+function numericSetting(config, name, fallback, minimum, maximum) {
+    const value = Number(config?.[name]);
+    if (!Number.isFinite(value)) return fallback;
+    return Math.min(maximum, Math.max(minimum, value));
+}
+
+function assessHealth(metrics, config = {}) {
     const critical = message => ({ level: 'critical', message });
     const warning = message => ({ level: 'warning', message });
+    const memoryWarningAvailable = numericSetting(
+        config,
+        'memory_pressure_warning_available_percent',
+        DEFAULT_MEMORY_PRESSURE_WARNING_AVAILABLE_PERCENT,
+        0,
+        100
+    );
+    const memoryCriticalAvailable = numericSetting(
+        config,
+        'memory_pressure_critical_available_percent',
+        DEFAULT_MEMORY_PRESSURE_CRITICAL_AVAILABLE_PERCENT,
+        0,
+        memoryWarningAvailable
+    );
+    const swapWarning = numericSetting(
+        config,
+        'swap_pressure_warning_percent',
+        DEFAULT_SWAP_PRESSURE_WARNING_PERCENT,
+        0,
+        100
+    );
+    const swapCritical = numericSetting(
+        config,
+        'swap_pressure_critical_percent',
+        DEFAULT_SWAP_PRESSURE_CRITICAL_PERCENT,
+        swapWarning,
+        100
+    );
 
     if (metrics.storagePercent >= 95) return critical('STORAGE CRITICAL');
     if (metrics.cpuTempC >= 90) return critical('CPU TEMP CRITICAL');
     if (metrics.memoryPercent >= 95) return critical('RAM CRITICAL');
-    if (metrics.swapPercent >= 50) return critical('SWAP CRITICAL');
+    if (metrics.hostMemoryAvailablePercent < memoryCriticalAvailable
+        || metrics.swapPercent >= swapCritical) {
+        return critical('RAM PRESSURE CRITICAL');
+    }
     if (metrics.backupState === 'critical') return critical(metrics.backupMessage);
 
     if (metrics.storagePercent >= 85) return warning('STORAGE HIGH');
     if (metrics.cpuTempC >= 75) return warning('CPU TEMP HIGH');
     if (metrics.memoryPercent >= 85) return warning('RAM HIGH');
-    if (metrics.swapPercent >= 10) return warning('SWAP ACTIVE');
+    if (metrics.hostMemoryAvailablePercent < memoryWarningAvailable
+        && metrics.swapPercent >= swapWarning) {
+        return warning('RAM PRESSURE');
+    }
     if (metrics.backupState === 'warning' || metrics.backupState === 'unknown') {
         return warning(metrics.backupMessage);
     }
@@ -340,7 +386,49 @@ function assessHealth(metrics) {
     return { level: 'ok', message: 'ALL SYSTEMS HEALTHY' };
 }
 
-function buildMetrics(nodeStatus, storageStatus, resources, temperature, nodeName, workloadMemory = null, backup = null) {
+function stabilizeHealth(metrics, state, warningSamples = DEFAULT_HEALTH_WARNING_SAMPLES,
+    recoverySamples = DEFAULT_HEALTH_RECOVERY_SAMPLES) {
+    const observed = {
+        level: metrics.healthLevel,
+        message: metrics.healthMessage
+    };
+    const required = observed.level === 'ok'
+        ? Math.max(1, Math.round(Number(recoverySamples) || DEFAULT_HEALTH_RECOVERY_SAMPLES))
+        : Math.max(1, Math.round(Number(warningSamples) || DEFAULT_HEALTH_WARNING_SAMPLES));
+
+    if (observed.level === state.level && observed.message === state.message) {
+        state.pendingLevel = '';
+        state.pendingMessage = '';
+        state.pendingCount = 0;
+    }
+    else {
+        if (observed.level === state.pendingLevel && observed.message === state.pendingMessage) {
+            state.pendingCount++;
+        }
+        else {
+            state.pendingLevel = observed.level;
+            state.pendingMessage = observed.message;
+            state.pendingCount = 1;
+        }
+
+        if (state.pendingCount >= required) {
+            state.level = observed.level;
+            state.message = observed.message;
+            state.pendingLevel = '';
+            state.pendingMessage = '';
+            state.pendingCount = 0;
+        }
+    }
+
+    return {
+        ...metrics,
+        healthLevel: state.level,
+        healthMessage: state.message
+    };
+}
+
+function buildMetrics(nodeStatus, storageStatus, resources, temperature, nodeName,
+    workloadMemory = null, backup = null, healthConfig = {}) {
     const totalMemory = Number(nodeStatus?.memory?.total) || 0;
     const availableMemory = Number(nodeStatus?.memory?.available) || 0;
     const storageTotal = Number(storageStatus?.total) || 0;
@@ -359,6 +447,8 @@ function buildMetrics(nodeStatus, storageStatus, resources, temperature, nodeNam
         cpuTempC: temperature,
         storagePercent: storageTotal > 0 ? storageUsed / storageTotal * 100 : 0,
         swapPercent: swapTotal > 0 ? swapUsed / swapTotal * 100 : 0,
+        hostMemoryAvailableGb: Math.min(totalMemory, availableMemory) / GIBIBYTE,
+        hostMemoryAvailablePercent: totalMemory > 0 ? Math.min(totalMemory, availableMemory) / totalMemory * 100 : 100,
         backupState: backup?.state || 'unknown',
         backupAgeHours: Number(backup?.ageHours) || 0,
         backupMessage: backup?.message || 'NO BACKUP DATA',
@@ -386,7 +476,7 @@ function buildMetrics(nodeStatus, storageStatus, resources, temperature, nodeNam
         metrics.memoryMode = 'host-occupied';
     }
 
-    const health = assessHealth(metrics);
+    const health = assessHealth(metrics, healthConfig);
     metrics.healthLevel = health.level;
     metrics.healthMessage = health.message;
 
@@ -423,7 +513,8 @@ async function collect(config) {
         readTemperature(config._private.temperaturePath),
         nodeName,
         workloadMemory,
-        backup
+        backup,
+        config
     );
     if (taskResult.error) metrics.backupProbeError = taskResult.error;
     return metrics;
@@ -438,7 +529,13 @@ async function sample(rate, format, config) {
         privateState.lastSampled = now;
 
         try {
-            privateState.value = await collect(config);
+            const collected = await collect(config);
+            privateState.value = stabilizeHealth(
+                collected,
+                privateState.health,
+                config.health_warning_samples,
+                config.health_recovery_samples
+            );
             privateState.fault = false;
             const probeErrors = privateState.value.memoryProbeErrors || [];
             if (probeErrors.length > 0 && !privateState.memoryFault) {
@@ -476,6 +573,13 @@ function init(config) {
         fault: false,
         memoryFault: false,
         backupFault: false,
+        health: {
+            level: 'ok',
+            message: 'ALL SYSTEMS HEALTHY',
+            pendingLevel: '',
+            pendingMessage: '',
+            pendingCount: 0
+        },
         value: { hostConnected: false }
     };
 
@@ -507,6 +611,12 @@ function settings() {
             { name: 'guest_probe_timeout_ms', type: 'number', value: DEFAULT_TIMEOUT_MS },
             { name: 'backup_warning_hours', type: 'number', value: DEFAULT_BACKUP_WARNING_HOURS },
             { name: 'backup_critical_hours', type: 'number', value: DEFAULT_BACKUP_CRITICAL_HOURS },
+            { name: 'memory_pressure_warning_available_percent', type: 'number', value: DEFAULT_MEMORY_PRESSURE_WARNING_AVAILABLE_PERCENT },
+            { name: 'memory_pressure_critical_available_percent', type: 'number', value: DEFAULT_MEMORY_PRESSURE_CRITICAL_AVAILABLE_PERCENT },
+            { name: 'swap_pressure_warning_percent', type: 'number', value: DEFAULT_SWAP_PRESSURE_WARNING_PERCENT },
+            { name: 'swap_pressure_critical_percent', type: 'number', value: DEFAULT_SWAP_PRESSURE_CRITICAL_PERCENT },
+            { name: 'health_warning_samples', type: 'number', value: DEFAULT_HEALTH_WARNING_SAMPLES },
+            { name: 'health_recovery_samples', type: 'number', value: DEFAULT_HEALTH_RECOVERY_SAMPLES },
             { name: 'allow_http', type: 'boolean', value: false }
         ]
     };
@@ -523,6 +633,7 @@ module.exports = {
     collectWorkloadMemory,
     analyzeBackupTasks,
     assessHealth,
+    stabilizeHealth,
     buildMetrics,
     collect
 };

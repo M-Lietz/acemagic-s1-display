@@ -5,6 +5,8 @@ orientiert sich an Keep a Changelog; Versionen folgen Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-08-25
+
 ### Geändert
 
 - Swap-Belegung allein erzeugt keine Warnung mehr; erst kombinierter
@@ -102,6 +104,7 @@ orientiert sich an Keep a Changelog; Versionen folgen Semantic Versioning.
 - ungenutzte Upstream-Editor-, Sensor- und Widget-Bestandteile entfernt
 - Font-Nutzung und Cache-Verhalten vereinfacht
 
-[Unreleased]: https://github.com/M-Lietz/acemagic-s1-display/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/M-Lietz/acemagic-s1-display/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/M-Lietz/acemagic-s1-display/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/M-Lietz/acemagic-s1-display/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/M-Lietz/acemagic-s1-display/releases/tag/v0.1.2

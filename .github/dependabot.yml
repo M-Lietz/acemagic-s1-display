@@ -4,19 +4,53 @@ updates:
     directory: /s1panel
     schedule:
       interval: monthly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 2
     groups:
-      runtime-dependencies:
+      runtime-minor-patch:
+        dependency-type: production
+        update-types: [minor, patch]
+        patterns: ["*"]
+      tooling-minor-patch:
+        dependency-type: development
+        update-types: [minor, patch]
+        patterns: ["*"]
+      security-updates:
+        applies-to: security-updates
         patterns: ["*"]
 
   - package-ecosystem: npm
     directory: /s1panel/gui
     schedule:
       interval: monthly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 2
     groups:
-      gallery-dependencies:
+      runtime-minor-patch:
+        dependency-type: production
+        update-types: [minor, patch]
+        patterns: ["*"]
+      tooling-minor-patch:
+        dependency-type: development
+        update-types: [minor, patch]
+        patterns: ["*"]
+      security-updates:
+        applies-to: security-updates
         patterns: ["*"]
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: monthly
+      day: monday
+      time: "06:15"
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 1
+    groups:
+      actions-minor-patch:
+        update-types: [minor, patch]
+        patterns: ["*"]

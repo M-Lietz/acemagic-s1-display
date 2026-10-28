@@ -5,6 +5,22 @@ orientiert sich an Keep a Changelog; Versionen folgen Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-10-28
+
+### Geändert
+
+- geprüfte kompatible Abhängigkeitskorrekturen für qs 6.16.1,
+  body-parser 2.4.0, proxy-addr 2.0.8 und source-map-js 1.2.2
+- Gallery-Werkzeuge auf Vue 3.5.43, Vite 8.3.5 und Vue-Plugin 6.0.10
+  aktualisiert; Node.js 24 bleibt die vorgesehene Laufzeit
+- GitHub-Prüfungen verwenden die aktuelle gepinnte Node-Einrichtung;
+  kleine Dependabot-Updates und Sicherheitsvorschläge werden nativ gruppiert
+- Versionsnummer von Anwendung und Gallery gemeinsam angehoben, damit ein
+  neues Installationsarchiv die vorhandene Version 0.1.4 nicht überschreibt
+
+Anzeige, Gerätekonfiguration und Zugangsdaten bleiben unverändert.
+Die Versionsvorbereitung ist noch keine Veröffentlichung oder Installation.
+
 ## [0.1.4] - 2026-08-25
 
 ### Geändert

@@ -36,7 +36,7 @@ function listDesigns(catalog, activeTheme) {
         ...design,
         active: Boolean(design.theme && design.theme === activeTheme),
         available: design.status === 'implemented' && Boolean(design.theme),
-        preview_url: '/design-previews/' + design.preview.split(path.sep).map(encodeURIComponent).join('/')
+        preview_url: '/design-previews/' + design.preview.split('/').map(encodeURIComponent).join('/')
     }));
 }
 

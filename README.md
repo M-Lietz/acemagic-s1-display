@@ -1,3 +1,9 @@
+## Live-Wartung – 15.11.2026
+
+Quellstand `002d478d563cac4fd6ddc67178fc6bd70b28f7fa` aus PR #26 veröffentlicht; Vue 3.5.45 und zuvor geprüfte Laufzeitupdates. 52 Tests, GUI-Build, GitHub-CI einschließlich Linux-Renderer, Archivprüfung und CodeQL erfolgreich. Das native Release wurde in einem getrennten temporären Ordner passend zur bestehenden Linux-Laufzeit gebaut; Paket-Audits ohne bekannte Schwachstelle. Archiv-SHA256: `a3e4515671f535ba8da3fb3339e77f877ca7da1f0fd6e8672cbea705a4e6ba56`.
+
+Aktiv: `0.1.5-002d478d563c`; Rückweg: `0.1.5-c202aa94d7fa`. Vorher Konfiguration gesichert, automatischen Rollback isoliert mit simuliertem Dienstfehler geprüft, danach über ops/deploy-release aktiviert. Healthcheck erfolgreich, LCD verbunden, keine Neustartfehler und Konfiguration unverändert. Zugangsdaten-Datei unverändert und nicht kopiert. Keine visuelle Prüfung am physischen TFT.
+
 # AceMagic S1 Display
 
 > **English summary:** Turn the built-in 170×320 LCD of the AceMagic S1 into a
